@@ -1,0 +1,7 @@
+# Place JSON metadata files here for Nova photos
+# Example: nova1.json
+# {
+#   "filename": "nova1.jpg",
+#   "caption": "Optional caption text",
+#   "alt": "Optional alt text"
+# }

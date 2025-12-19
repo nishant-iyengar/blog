@@ -60,9 +60,9 @@ export default function Sidebar() {
     <>
       <aside
         ref={sidebarRef}
-        className={`relative transition-all duration-300 ease-in-out ${
+        className={`hidden md:block relative transition-all duration-300 ease-in-out ${
           isOpen ? 'w-64' : 'w-0'
-        } md:min-h-screen bg-[#EDF2F7] border-r border-[#E2E8F0] overflow-hidden`}
+        } min-h-screen bg-[#EDF2F7] border-r border-[#E2E8F0] overflow-hidden`}
       >
         <div className={`h-full p-6 ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
           <Navigation />
@@ -78,11 +78,11 @@ export default function Sidebar() {
         />
       </aside>
 
-      {/* Collapsed Toggle Button */}
+      {/* Collapsed Toggle Button - Only show on desktop when sidebar is closed */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed left-0 top-1/2 -translate-y-1/2 z-20 bg-[#EDF2F7] border-r border-[#E2E8F0] px-2 py-4 rounded-r-lg hover:bg-[#629C77] hover:text-white transition-colors"
+          className="hidden md:block fixed left-0 top-1/2 -translate-y-1/2 z-20 bg-[#EDF2F7] border-r border-[#E2E8F0] px-2 py-4 rounded-r-lg hover:bg-[#629C77] hover:text-white transition-colors"
           aria-label="Open sidebar"
         >
           <svg

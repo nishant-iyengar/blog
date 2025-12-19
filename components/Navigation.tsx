@@ -8,6 +8,7 @@ export default function Navigation() {
   
   const isBlogPosts = pathname === '/' || pathname.startsWith('/posts/');
   const isPhotos = pathname === '/photos';
+  const isNova = pathname === '/nova';
 
   return (
     <nav className="flex flex-row md:flex-col gap-3 md:gap-4">
@@ -30,6 +31,16 @@ export default function Navigation() {
         }`}
       >
         Photos
+      </Link>
+      <Link
+        href="/nova"
+        className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+          isNova
+            ? 'bg-[#629C77] !text-white'
+            : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
+        }`}
+      >
+        Nova
       </Link>
     </nav>
   );

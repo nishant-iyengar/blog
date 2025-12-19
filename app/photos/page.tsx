@@ -23,7 +23,7 @@ export default function PhotosPage() {
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
-      <div className="flex flex-col md:flex-row">
+      <div className="flex md:flex-row">
         <Sidebar />
         
         {/* Main Content */}
