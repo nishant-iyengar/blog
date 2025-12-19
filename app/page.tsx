@@ -1,37 +1,41 @@
 import { getAllPosts } from '@/lib/posts';
 import PostTile from '@/components/PostTile';
+import Sidebar from '@/components/Sidebar';
 
 export default function Home() {
   const posts = getAllPosts();
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="max-w-6xl mx-auto px-4 py-12">
-        <header className="mb-12 text-center">
-          <h1 className="text-5xl font-bold text-[#629C77] mb-4">
-            Nishant Iyengar
-          </h1>
-          <p className="text-xl text-gray-600">
-            Welcome to my blog
-          </p>
-        </header>
+    <div className="min-h-screen bg-[#F7FAFC]">
+      <div className="flex flex-col md:flex-row">
+        <Sidebar />
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {posts.map((post) => (
-            <PostTile
-              key={post.slug}
-              slug={post.slug}
-              metadata={post.metadata}
-            />
-          ))}
-        </div>
-
-        {posts.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No blog posts yet. Check back soon!</p>
+        {/* Main Content */}
+        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8">
+          <header className="mb-8 flex justify-end">
+            <div className="text-right">
+              <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
+              <div className="text-sm text-[#718096] mt-1">iyengar.nish@gmail.com</div>
+            </div>
+          </header>
+          
+          <div className="flex flex-wrap gap-4">
+            {posts.map((post) => (
+              <PostTile
+                key={post.slug}
+                slug={post.slug}
+                metadata={post.metadata}
+              />
+            ))}
           </div>
-        )}
-      </main>
+
+          {posts.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-[#718096]">No blog posts yet. Check back soon!</p>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

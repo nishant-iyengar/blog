@@ -1,20 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f9fafb;
-  --foreground: #171717;
-  --primary: #629C77;
+  /* Color System */
+  --primary: #629C77;        /* Primary green accent */
+  --secondary: #F5F5F5;      /* Light gray/beige for card backgrounds */
+  --text-primary: #4A5568;   /* Soft black/gray for main text */
+  --text-secondary: #718096; /* Muted text */
+  --background: #F7FAFC;     /* Soft gray background */
+  --border: #E2E8F0;         /* Light border */
+  --sidebar-bg: #EDF2F7;     /* Sidebar background */
 }
 
 @theme inline {
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-border: var(--border);
+  --font-sans: var(--font-inter);
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Ensure all text defaults to soft black/gray */
+* {
+  color: var(--text-primary);
 }

@@ -1,0 +1,7 @@
+# Place JSON metadata files here
+# Example: photo1.json
+# {
+#   "filename": "photo1.jpg",
+#   "caption": "Optional caption text",
+#   "alt": "Optional alt text"
+# }
