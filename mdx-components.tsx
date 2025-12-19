@@ -1,8 +1,10 @@
 import type { MDXComponents } from 'mdx/types';
 import { ReactNode } from 'react';
+import Media from '@/components/Media';
 
 export function useMDXComponents(components: MDXComponents = {}): MDXComponents {
   return {
+    Media,
     // Customize built-in components
     h1: ({ children }: { children?: ReactNode }) => (
       <h1 className="text-2xl font-bold mb-4 mt-6 text-[#629C77]">{children}</h1>
