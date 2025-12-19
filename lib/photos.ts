@@ -3,11 +3,11 @@ import path from 'path';
 import { getSectionMetadata } from './sections';
 
 const photosMetadataDirectory = path.join(process.cwd(), 'content/photos');
-const photosPublicDirectory = path.join(process.cwd(), 'public/photos');
 
 export interface PhotoMetadata {
   filename: string;
   section: string; // Required: section identifier (e.g., date like "2024-01-15")
+  blobUrl: string; // Required: Vercel Blob Storage URL
   caption?: string;
   alt?: string;
 }
@@ -43,20 +43,22 @@ export function getAllPhotos(): Photo[] {
         const fileContents = fs.readFileSync(filePath, 'utf8');
         const metadata: PhotoMetadata = JSON.parse(fileContents);
         
-        // Validate that section exists
+        // Validate required fields
         if (!metadata.section) {
           console.warn(`Photo ${file} is missing required 'section' property`);
           return;
         }
         
-        // Check if the image file exists in public/photos
-        const imagePath = path.join(photosPublicDirectory, metadata.filename);
-        if (fs.existsSync(imagePath)) {
-          photos.push({
-            ...metadata,
-            src: `/photos/${metadata.filename}`,
-          });
+        if (!metadata.blobUrl) {
+          console.warn(`Photo ${file} is missing required 'blobUrl' property`);
+          return;
         }
+        
+        // Only include photos with valid blobUrl
+        photos.push({
+          ...metadata,
+          src: metadata.blobUrl,
+        });
       }
     });
 

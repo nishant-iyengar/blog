@@ -8,6 +8,7 @@ export interface PostMetadata {
   title: string;
   date: string;
   excerpt: string;
+  tag?: 'poem' | 'short story' | 'random';
 }
 
 export interface Post {
