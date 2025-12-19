@@ -5,6 +5,7 @@ import matter from 'gray-matter';
 const postsDirectory = path.join(process.cwd(), 'content/posts');
 
 export interface PostMetadata {
+  slug: string; // Required: post slug (used for URL and media sub-folder)
   title: string;
   date: string; // Publication date (for display)
   createdAt?: string; // Creation date (for sorting, preferred over date)
@@ -23,14 +24,26 @@ export function getAllPosts(): Post[] {
   const allPostsData = fileNames
     .filter((fileName) => fileName.endsWith('.mdx'))
     .map((fileName) => {
-      const slug = fileName.replace(/\.mdx$/, '');
       const fullPath = path.join(postsDirectory, fileName);
       const fileContents = fs.readFileSync(fullPath, 'utf8');
       const { data, content } = matter(fileContents);
+      const metadata = data as PostMetadata;
+
+      // Validate required slug property
+      if (!metadata.slug) {
+        console.warn(`Post ${fileName} is missing required 'slug' property`);
+        // Fallback to filename for backward compatibility, but this should be fixed
+        const fallbackSlug = fileName.replace(/\.mdx$/, '');
+        return {
+          slug: fallbackSlug,
+          metadata: { ...metadata, slug: fallbackSlug },
+          content,
+        };
+      }
 
       return {
-        slug,
-        metadata: data as PostMetadata,
+        slug: metadata.slug,
+        metadata,
         content,
       };
     });
@@ -56,15 +69,29 @@ export function getAllPosts(): Post[] {
 
 export function getPostBySlug(slug: string): Post | null {
   try {
-    const fullPath = path.join(postsDirectory, `${slug}.mdx`);
-    const fileContents = fs.readFileSync(fullPath, 'utf8');
-    const { data, content } = matter(fileContents);
+    // First, try to find by matching slug in frontmatter
+    const fileNames = fs.readdirSync(postsDirectory);
+    for (const fileName of fileNames) {
+      if (!fileName.endsWith('.mdx')) continue;
+      
+      const fullPath = path.join(postsDirectory, fileName);
+      const fileContents = fs.readFileSync(fullPath, 'utf8');
+      const { data, content } = matter(fileContents);
+      const metadata = data as PostMetadata;
 
-    return {
-      slug,
-      metadata: data as PostMetadata,
-      content,
-    };
+      // Use slug from frontmatter if available, otherwise fallback to filename
+      const postSlug = metadata.slug || fileName.replace(/\.mdx$/, '');
+      
+      if (postSlug === slug) {
+        return {
+          slug: postSlug,
+          metadata: { ...metadata, slug: postSlug },
+          content,
+        };
+      }
+    }
+    
+    return null;
   } catch (error) {
     return null;
   }
@@ -74,5 +101,30 @@ export function getAllPostSlugs(): string[] {
   const fileNames = fs.readdirSync(postsDirectory);
   return fileNames
     .filter((fileName) => fileName.endsWith('.mdx'))
-    .map((fileName) => fileName.replace(/\.mdx$/, ''));
+    .map((fileName) => {
+      const fullPath = path.join(postsDirectory, fileName);
+      const fileContents = fs.readFileSync(fullPath, 'utf8');
+      const { data } = matter(fileContents);
+      const metadata = data as PostMetadata;
+      // Use slug from frontmatter if available, otherwise fallback to filename
+      return metadata.slug || fileName.replace(/\.mdx$/, '');
+    });
+}
+
+/**
+ * Resolves a media path relative to a post's slug-based sub-folder
+ * @param postSlug - The post's slug
+ * @param mediaPath - The media filename or relative path
+ * @returns The full path to the media file in the post's sub-folder
+ */
+export function getPostMediaPath(postSlug: string, mediaPath: string): string {
+  // If mediaPath is already a full URL or absolute path, return it as-is
+  if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://') || mediaPath.startsWith('/')) {
+    return mediaPath;
+  }
+  
+  // Construct path: /posts/{slug}/{mediaPath}
+  // This will be resolved by Next.js static file serving from public/posts/{slug}/
+  // or can be used with Vercel Blob Storage paths like posts/{slug}/{mediaPath}
+  return `/posts/${postSlug}/${mediaPath}`;
 }

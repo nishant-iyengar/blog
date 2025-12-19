@@ -24,7 +24,7 @@ export default async function PostPage({ params }: PageProps) {
     notFound();
   }
 
-  const components = useMDXComponents({});
+  const components = useMDXComponents({}, post.slug);
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">

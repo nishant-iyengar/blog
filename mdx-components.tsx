@@ -1,10 +1,21 @@
 import type { MDXComponents } from 'mdx/types';
 import { ReactNode } from 'react';
 import Media from '@/components/Media';
+import { getPostMediaPath } from '@/lib/posts';
 
-export function useMDXComponents(components: MDXComponents = {}): MDXComponents {
+export function useMDXComponents(components: MDXComponents = {}, postSlug?: string): MDXComponents {
+  // Create a Media wrapper that resolves paths relative to post slug
+  const MediaWithSlug = (props: { src: string; width?: string | number; height?: string | number; alt?: string; caption?: string }) => {
+    // If src is a full URL, use it as-is. Otherwise, resolve it relative to post slug
+    const resolvedSrc = postSlug && !props.src.startsWith('http://') && !props.src.startsWith('https://') && !props.src.startsWith('/')
+      ? getPostMediaPath(postSlug, props.src)
+      : props.src;
+    
+    return <Media {...props} src={resolvedSrc} />;
+  };
+
   return {
-    Media,
+    Media: MediaWithSlug,
     // Customize built-in components
     h1: ({ children }: { children?: ReactNode }) => (
       <h1 className="text-2xl font-bold mb-4 mt-6 text-[#629C77]">{children}</h1>

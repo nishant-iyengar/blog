@@ -6,7 +6,7 @@ const photosMetadataDirectory = path.join(process.cwd(), 'content/photos');
 
 export interface PhotoMetadata {
   filename: string;
-  section: string; // Required: section identifier (e.g., date like "2024-01-15")
+  section: string; // Required: ISO date (YYYY-MM-DD) matching the sub-directory name
   blobUrl: string; // Required: Vercel Blob Storage URL
   date?: string; // Optional: photo date (for sorting)
   rank?: number; // Optional: photo rank (for sorting)
@@ -31,28 +31,73 @@ export function getAllPhotos(): Photo[] {
       return [];
     }
 
-    const files = fs.readdirSync(photosMetadataDirectory);
     const photos: Photo[] = [];
+    const entries = fs.readdirSync(photosMetadataDirectory, { withFileTypes: true });
 
-    files.forEach((file) => {
-      // Skip sections.json - it's metadata, not a photo
-      if (file === 'sections.json') {
+    entries.forEach((entry) => {
+      // Skip sections.json if it's in the root
+      if (entry.isFile() && entry.name === 'sections.json') {
         return;
       }
+
+      // If it's a directory (ISO date sub-folder), read JSON files from it
+      if (entry.isDirectory()) {
+        const sectionDate = entry.name; // Directory name is the ISO date (section)
+        const sectionPath = path.join(photosMetadataDirectory, sectionDate);
+        
+        // Validate that the directory name is a valid ISO date format (YYYY-MM-DD)
+        const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!isoDateRegex.test(sectionDate)) {
+          console.warn(`Photo directory ${sectionDate} does not match ISO date format (YYYY-MM-DD)`);
+          return;
+        }
+
+        try {
+          const files = fs.readdirSync(sectionPath);
+          files.forEach((file) => {
+            if (file.endsWith('.json')) {
+              const filePath = path.join(sectionPath, file);
+              const fileContents = fs.readFileSync(filePath, 'utf8');
+              const metadata: PhotoMetadata = JSON.parse(fileContents);
+              
+              // Set section from directory name if not provided in metadata
+              // This ensures consistency between directory structure and metadata
+              const section = metadata.section || sectionDate;
+              
+              // Validate required fields
+              if (!metadata.blobUrl) {
+                console.warn(`Photo ${file} in ${sectionDate} is missing required 'blobUrl' property`);
+                return;
+              }
+              
+              // Only include photos with valid blobUrl
+              photos.push({
+                ...metadata,
+                section, // Use directory name as section
+                src: metadata.blobUrl,
+              });
+            }
+          });
+        } catch (error) {
+          console.warn(`Error reading photos from directory ${sectionDate}:`, error);
+        }
+      }
       
-      if (file.endsWith('.json')) {
-        const filePath = path.join(photosMetadataDirectory, file);
+      // Also support legacy structure: JSON files directly in photos directory
+      // (for backward compatibility)
+      if (entry.isFile() && entry.name.endsWith('.json')) {
+        const filePath = path.join(photosMetadataDirectory, entry.name);
         const fileContents = fs.readFileSync(filePath, 'utf8');
         const metadata: PhotoMetadata = JSON.parse(fileContents);
         
         // Validate required fields
         if (!metadata.section) {
-          console.warn(`Photo ${file} is missing required 'section' property`);
+          console.warn(`Photo ${entry.name} is missing required 'section' property`);
           return;
         }
         
         if (!metadata.blobUrl) {
-          console.warn(`Photo ${file} is missing required 'blobUrl' property`);
+          console.warn(`Photo ${entry.name} is missing required 'blobUrl' property`);
           return;
         }
         
@@ -67,6 +112,7 @@ export function getAllPhotos(): Photo[] {
     return photos;
   } catch (error) {
     // Directory doesn't exist yet or error reading, return empty array
+    console.error('Error fetching photos:', error);
     return [];
   }
 }
