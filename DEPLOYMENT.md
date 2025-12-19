@@ -44,18 +44,34 @@ Vercel is the recommended platform for Next.js applications and provides:
 
 #### Option A: Using CNAME (Recommended for www subdomain)
 
-1. Find or add a CNAME record:
+**⚠️ IMPORTANT: Check for existing records first!**
+
+1. **Before adding the CNAME record, check if a record named "www" already exists:**
+   - Look through your DNS records list
+   - If you see an A record or another CNAME for "www", you must **delete it first**
+   - **CNAME and A records cannot coexist for the same name**
+
+2. **Delete any existing "www" record:**
+   - Find the record with Name = `www`
+   - Click the three dots (⋯) or edit button
+   - Select "Delete" or "Remove"
+   - Confirm deletion
+
+3. **Now add the CNAME record:**
+   - Click "Add" or "+" to create a new record
    - **Type**: CNAME
    - **Name**: `www`
-   - **Value**: `cname.vercel-dns.com` (or the value Vercel provides)
+   - **Value**: `cname.vercel-dns.com` (or the exact value Vercel provides in domain settings)
    - **TTL**: 600 (or default)
+   - Click "Save"
 
-2. If you want the root domain (nishantiyengar.com) to work too:
+4. **For the root domain (nishantiyengar.com) to work too:**
    - Add an A record:
      - **Type**: A
-     - **Name**: `@` (or leave blank for root)
-     - **Value**: `76.76.21.21` (Vercel's IP - check Vercel dashboard for current IP)
+     - **Name**: `@` (or leave blank for root domain)
+     - **Value**: `76.76.21.21` (Vercel's IP - **check Vercel dashboard for the current IP**, it may change)
      - **TTL**: 600
+   - **Note**: If you already have an A record for `@`, update its value to Vercel's IP instead of creating a duplicate
 
 #### Option B: Using Vercel's Nameservers (Alternative)
 
@@ -101,6 +117,25 @@ Your repository is set up for automatic deployments:
 2. **Verify DNS Records**: Double-check the CNAME/A records in GoDaddy match Vercel's requirements
 
 3. **Check Vercel Domain Status**: In Vercel dashboard, check if domain shows as "Valid Configuration"
+
+### "Record name www conflicts with another record" Error
+
+This error means you already have a DNS record named "www". Here's how to fix it:
+
+1. **In GoDaddy DNS settings:**
+   - Scroll through all your DNS records
+   - Look for any record with Name = `www` (could be A, CNAME, or other type)
+   - **Delete the existing "www" record first**
+   - Then add the new CNAME record
+
+2. **Common scenarios:**
+   - **Existing A record for "www"**: Delete it, then add CNAME
+   - **Existing CNAME for "www"**: Delete it, then add the new one with Vercel's value
+   - **Multiple "www" records**: Delete all of them, then add one CNAME
+
+3. **After deleting and adding:**
+   - Wait a few minutes for changes to propagate
+   - Check Vercel dashboard - domain should show as "Valid Configuration" once DNS propagates
 
 ### Build Failures
 
