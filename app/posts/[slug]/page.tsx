@@ -32,7 +32,7 @@ export default async function PostPage({ params }: PageProps) {
         <Sidebar />
         
         {/* Main Content */}
-        <main className="flex-1 max-w-5xl mx-auto px-4 md:px-8 py-8">
+        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8">
           <header className="mb-8 flex justify-end">
             <div className="text-right">
               <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
