@@ -34,13 +34,18 @@ export function getAllPosts(): Post[] {
       };
     });
 
-  // Sort posts by date in descending order
+  // Sort posts by date in descending order (newest first)
   return allPostsData.sort((a, b) => {
-    if (a.metadata.date < b.metadata.date) {
-      return 1;
-    } else {
-      return -1;
+    const dateA = new Date(a.metadata.date).getTime();
+    const dateB = new Date(b.metadata.date).getTime();
+    
+    // If dates are valid, sort by date (newest first)
+    if (!isNaN(dateA) && !isNaN(dateB)) {
+      return dateB - dateA; // Descending order (newest first)
     }
+    
+    // Fallback to string comparison if dates are invalid
+    return b.metadata.date.localeCompare(a.metadata.date);
   });
 }
 
