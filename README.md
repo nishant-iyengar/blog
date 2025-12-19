@@ -96,25 +96,24 @@ Customize MDX rendering by editing `mdx-components.tsx`. You can add custom Reac
 
 ## Deployment
 
-### Deploying to Vercel
+**📖 For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)**
 
-1. Push your code to GitHub
+### Quick Start
+
+1. **Vercel is required** for automatic deployments from GitHub
 2. Import your repository in [Vercel](https://vercel.com)
-3. Configure the following settings:
-   - **Framework Preset**: Next.js
-   - **Build Command**: `pnpm build`
-   - **Install Command**: `pnpm install`
-   - **Root Directory**: `./` (or leave as default)
-4. Add your custom domain (www.nishantiyengar.com) in the Vercel project settings
-5. Update your domain's DNS settings in GoDaddy to point to Vercel
+3. Add your custom domain: `www.nishantiyengar.com`
+4. Configure DNS in GoDaddy (see DEPLOYMENT.md for details)
+5. Every commit to GitHub will automatically deploy!
 
-### Domain Configuration
+### Automatic Deployments
 
-1. In Vercel, go to your project settings → Domains
-2. Add `www.nishantiyengar.com` and `nishantiyengar.com`
-3. In GoDaddy, update your DNS records:
-   - Add a CNAME record: `www` → `cname.vercel-dns.com`
-   - Add an A record for the root domain (if needed) or use Vercel's instructions
+✅ **Already configured!** Every push to the `main` branch automatically:
+- Triggers a new Vercel deployment
+- Runs `pnpm install` and `pnpm build`
+- Deploys to www.nishantiyengar.com
+
+**Just run `git change` and your site updates automatically!**
 
 ## Development
 
