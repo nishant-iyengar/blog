@@ -27,16 +27,16 @@ export function useMDXComponents(components: MDXComponents = {}, postSlug?: stri
       <h3 className="text-lg font-semibold mb-2 mt-4 text-[#629C77]">{children}</h3>
     ),
     p: ({ children }: { children?: ReactNode }) => (
-      <p className="mb-3 text-base leading-6 text-[#4A5568]">{children}</p>
+      <p className="mb-3 text-sm leading-5 text-[#4A5568]">{children}</p>
     ),
     a: ({ children, href }: { children?: ReactNode; href?: string }) => (
       <a href={href} className="text-[#629C77] hover:underline hover:text-[#4a7a5d]">{children}</a>
     ),
     ul: ({ children }: { children?: ReactNode }) => (
-      <ul className="list-disc list-inside mb-3 space-y-1.5 text-base text-[#4A5568]">{children}</ul>
+      <ul className="list-disc list-inside mb-3 space-y-1.5 text-sm text-[#4A5568]">{children}</ul>
     ),
     ol: ({ children }: { children?: ReactNode }) => (
-      <ol className="list-decimal list-inside mb-3 space-y-1.5 text-base text-[#4A5568]">{children}</ol>
+      <ol className="list-decimal list-inside mb-3 space-y-1.5 text-sm text-[#4A5568]">{children}</ol>
     ),
     li: ({ children }: { children?: ReactNode }) => (
       <li className="ml-4 leading-6">{children}</li>
@@ -48,7 +48,7 @@ export function useMDXComponents(components: MDXComponents = {}, postSlug?: stri
       <pre className="bg-gray-100 p-3 rounded-lg mb-3 overflow-x-auto text-sm">{children}</pre>
     ),
     blockquote: ({ children }: { children?: ReactNode }) => (
-      <blockquote className="border-l-4 border-[#629C77] pl-4 italic my-3 text-base text-[#4A5568]">{children}</blockquote>
+      <blockquote className="border-l-4 border-[#629C77] pl-4 italic my-3 text-sm text-[#4A5568]">{children}</blockquote>
     ),
     ...components,
   };

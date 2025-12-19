@@ -23,6 +23,7 @@ export async function getAllNovaPhotos(): Promise<NovaPhoto[]> {
   try {
     // Check if metadata directory exists
     if (!fs.existsSync(novaMetadataDirectory)) {
+      console.warn('Nova metadata directory does not exist');
       return [];
     }
 
@@ -30,7 +31,20 @@ export async function getAllNovaPhotos(): Promise<NovaPhoto[]> {
     const photos: NovaPhoto[] = [];
 
     // Get all blobs in the nova/ folder
-    const { blobs } = await list({ prefix: 'nova/' });
+    // Check if BLOB_READ_WRITE_TOKEN is available
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error('BLOB_READ_WRITE_TOKEN environment variable is not set');
+      return [];
+    }
+
+    let blobs;
+    try {
+      const result = await list({ prefix: 'nova/' });
+      blobs = result.blobs;
+    } catch (error) {
+      console.error('Error fetching blobs from Vercel Blob Storage:', error);
+      return [];
+    }
 
     for (const file of files) {
       if (file.endsWith('.json')) {

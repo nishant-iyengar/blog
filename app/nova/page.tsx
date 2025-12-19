@@ -2,6 +2,9 @@ import Sidebar from '@/components/Sidebar';
 import { getAllNovaPhotos } from '@/lib/nova';
 import Image from 'next/image';
 
+// Force dynamic rendering to ensure blob storage API calls work at runtime
+export const dynamic = 'force-dynamic';
+
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString);

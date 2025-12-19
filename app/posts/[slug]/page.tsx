@@ -3,6 +3,7 @@ import { getAllPostSlugs, getPostBySlug } from '@/lib/posts';
 import { MDXRemote } from 'next-mdx-remote/rsc';
 import { useMDXComponents } from '@/mdx-components';
 import Sidebar from '@/components/Sidebar';
+import Divider from '@/components/Divider';
 import { toSentenceCase } from '@/lib/utils';
 
 interface PageProps {
@@ -56,6 +57,8 @@ export default async function PostPage({ params }: PageProps) {
                 })}
               </time>
             </header>
+            
+            <Divider />
             
             <div className="max-w-none">
               <MDXRemote source={post.content} components={components} />
