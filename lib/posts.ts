@@ -6,7 +6,8 @@ const postsDirectory = path.join(process.cwd(), 'content/posts');
 
 export interface PostMetadata {
   title: string;
-  date: string;
+  date: string; // Publication date (for display)
+  createdAt?: string; // Creation date (for sorting, preferred over date)
   excerpt: string;
   tag?: 'poem' | 'short story' | 'random';
 }
@@ -34,10 +35,14 @@ export function getAllPosts(): Post[] {
       };
     });
 
-  // Sort posts by date in descending order (newest first)
+  // Sort posts by createdAt (or date) in descending order (newest first)
   return allPostsData.sort((a, b) => {
-    const dateA = new Date(a.metadata.date).getTime();
-    const dateB = new Date(b.metadata.date).getTime();
+    // Prefer createdAt over date for sorting
+    const dateAStr = a.metadata.createdAt || a.metadata.date;
+    const dateBStr = b.metadata.createdAt || b.metadata.date;
+    
+    const dateA = new Date(dateAStr).getTime();
+    const dateB = new Date(dateBStr).getTime();
     
     // If dates are valid, sort by date (newest first)
     if (!isNaN(dateA) && !isNaN(dateB)) {
@@ -45,7 +50,7 @@ export function getAllPosts(): Post[] {
     }
     
     // Fallback to string comparison if dates are invalid
-    return b.metadata.date.localeCompare(a.metadata.date);
+    return dateBStr.localeCompare(dateAStr);
   });
 }
 
