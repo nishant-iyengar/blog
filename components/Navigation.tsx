@@ -13,9 +13,9 @@ export default function Navigation() {
     <nav className="flex flex-row md:flex-col gap-3 md:gap-4">
       <Link
         href="/"
-        className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+        className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
           isBlogPosts
-            ? 'bg-[#629C77] text-white font-medium'
+            ? 'bg-[#629C77] !text-white'
             : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
         }`}
       >
@@ -23,9 +23,9 @@ export default function Navigation() {
       </Link>
       <Link
         href="/photos"
-        className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+        className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
           isPhotos
-            ? 'bg-[#629C77] text-white font-medium'
+            ? 'bg-[#629C77] !text-white'
             : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
         }`}
       >
