@@ -8,6 +8,8 @@ export interface PhotoMetadata {
   filename: string;
   section: string; // Required: section identifier (e.g., date like "2024-01-15")
   blobUrl: string; // Required: Vercel Blob Storage URL
+  date?: string; // Optional: photo date (for sorting)
+  rank?: number; // Optional: photo rank (for sorting)
   caption?: string;
   alt?: string;
 }
@@ -85,17 +87,58 @@ export function getPhotosBySection(): PhotoSection[] {
     sectionsMap.get(photo.section)!.photos.push(photo);
   });
 
-  // Convert to array and sort by date (newest first)
+  // Sort photos within each section by date and/or rank
+  sectionsMap.forEach((section) => {
+    section.photos.sort((a, b) => {
+      // First, try to sort by date if both have dates
+      if (a.date && b.date) {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (!isNaN(dateA) && !isNaN(dateB)) {
+          const dateDiff = dateB - dateA; // Newest first
+          if (dateDiff !== 0) return dateDiff;
+        }
+      }
+      
+      // If dates are equal or one is missing, sort by rank
+      if (a.rank !== undefined && b.rank !== undefined) {
+        return a.rank - b.rank; // Lower rank first
+      }
+      if (a.rank !== undefined) return -1; // Photos with rank come first
+      if (b.rank !== undefined) return 1;
+      
+      // If only one has a date, prioritize it
+      if (a.date && !b.date) return -1;
+      if (b.date && !a.date) return 1;
+      
+      // If both have dates but couldn't parse, try string comparison
+      if (a.date && b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      
+      // Default: maintain original order
+      return 0;
+    });
+  });
+
+  // Convert to array and sort sections by date from sections.json (newest first)
   const sections = Array.from(sectionsMap.values());
   sections.sort((a, b) => {
-    // Try to parse as dates for sorting
-    const dateA = new Date(a.date).getTime();
-    const dateB = new Date(b.date).getTime();
+    const sectionMetaA = getSectionMetadata(a.date);
+    const sectionMetaB = getSectionMetadata(b.date);
+    
+    // Use the date from sections.json metadata if available, otherwise use section identifier
+    const dateAStr = sectionMetaA.date || a.date;
+    const dateBStr = sectionMetaB.date || b.date;
+    
+    // Try to parse section dates for sorting
+    const dateA = new Date(dateAStr).getTime();
+    const dateB = new Date(dateBStr).getTime();
     if (!isNaN(dateA) && !isNaN(dateB)) {
       return dateB - dateA; // Newest first
     }
     // If not valid dates, sort alphabetically (reverse)
-    return b.date.localeCompare(a.date);
+    return dateBStr.localeCompare(dateAStr);
   });
 
   return sections;
