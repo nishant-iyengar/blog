@@ -1,9 +1,25 @@
 import Sidebar from '@/components/Sidebar';
-import { getAllPhotos } from '@/lib/photos';
+import { getPhotosBySection } from '@/lib/photos';
 import Image from 'next/image';
 
 export default function PhotosPage() {
-  const photos = getAllPhotos();
+  const sections = getPhotosBySection();
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      }
+    } catch (e) {
+      // If not a valid date, return as-is
+    }
+    return dateString;
+  };
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
@@ -19,32 +35,51 @@ export default function PhotosPage() {
             </div>
           </header>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {photos.map((photo, index) => (
-              <div
-                key={index}
-                className="group relative overflow-hidden rounded-lg bg-white cursor-pointer transition-transform duration-300 hover:scale-105 shadow-sm"
-              >
-                <div className="relative aspect-square w-full">
-                  <Image
-                    src={photo.src}
-                    alt={photo.alt || photo.caption || 'Photo'}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+          <div className="space-y-12">
+            {sections.map((section, sectionIndex) => (
+              <section key={sectionIndex} className="scroll-mt-8">
+                {/* Section Header */}
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-[#4A5568] mb-2">
+                    {formatDate(section.date)}
+                  </h2>
+                  {section.description && (
+                    <p className="text-sm text-[#718096] leading-5">
+                      {section.description}
+                    </p>
+                  )}
                 </div>
-                {photo.caption && (
-                  <div className="p-3 bg-white">
-                    <p className="text-sm text-[#718096]">{photo.caption}</p>
-                  </div>
-                )}
-              </div>
+
+                {/* Photos Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {section.photos.map((photo, photoIndex) => (
+                    <div
+                      key={photoIndex}
+                      className="group relative overflow-hidden rounded-lg bg-white cursor-pointer transition-transform duration-300 hover:scale-105 shadow-sm"
+                    >
+                      <div className="relative aspect-square w-full">
+                        <Image
+                          src={photo.src}
+                          alt={photo.alt || photo.caption || 'Photo'}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+                      </div>
+                      {photo.caption && (
+                        <div className="p-3 bg-white">
+                          <p className="text-sm text-[#718096]">{photo.caption}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
 
-          {photos.length === 0 && (
+          {sections.length === 0 && (
             <div className="text-center py-12">
               <p className="text-[#718096]">No photos yet. Add photos to the content/photos directory.</p>
             </div>
