@@ -36,7 +36,7 @@ export function getAllPhotos(): Photo[] {
 
     files.forEach((file) => {
       // Skip sections.json - it's metadata, not a photo
-      if (file === 'sections.json' || file === 'README.md') {
+      if (file === 'sections.json') {
         return;
       }
       

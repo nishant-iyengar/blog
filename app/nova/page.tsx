@@ -2,8 +2,21 @@ import Sidebar from '@/components/Sidebar';
 import { getAllNovaPhotos } from '@/lib/nova';
 import Image from 'next/image';
 
-export default function NovaPage() {
-  const photos = getAllNovaPhotos();
+function formatDate(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+export default async function NovaPage() {
+  const photos = await getAllNovaPhotos();
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
@@ -36,9 +49,16 @@ export default function NovaPage() {
                   />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                 </div>
-                {photo.caption && (
+                {(photo.date || photo.caption) && (
                   <div className="p-3 bg-white">
-                    <p className="text-sm text-[#718096]">{photo.caption}</p>
+                    <p className="text-sm text-[#718096]">
+                      {photo.date && (
+                        <span className="font-medium">{formatDate(photo.date)}</span>
+                      )}
+                      {photo.caption && (
+                        <span className={photo.date ? "ml-2" : ""}>{photo.caption}</span>
+                      )}
+                    </p>
                   </div>
                 )}
               </div>

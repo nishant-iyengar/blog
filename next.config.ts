@@ -4,7 +4,14 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Configure `pageExtensions` to include md and mdx files
   pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
-  /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.public.blob.vercel-storage.com',
+      },
+    ],
+  },
 };
 
 const withMDX = createMDX({
