@@ -15,8 +15,8 @@ export default function Navigation() {
         href="/"
         className={`px-4 py-2 rounded-lg transition-colors text-sm ${
           isBlogPosts
-            ? 'bg-white text-[#4A5568] font-medium shadow-sm'
-            : 'text-[#718096] hover:bg-white/50 hover:text-[#4A5568]'
+            ? 'bg-[#629C77] text-white font-medium'
+            : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
         }`}
       >
         Posts
@@ -25,8 +25,8 @@ export default function Navigation() {
         href="/photos"
         className={`px-4 py-2 rounded-lg transition-colors text-sm ${
           isPhotos
-            ? 'bg-white text-[#4A5568] font-medium shadow-sm'
-            : 'text-[#718096] hover:bg-white/50 hover:text-[#4A5568]'
+            ? 'bg-[#629C77] text-white font-medium'
+            : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
         }`}
       >
         Photos
