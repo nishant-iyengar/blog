@@ -9,11 +9,13 @@ interface MediaProps {
 }
 
 export default function Media({ src, width = '100%', height, alt, caption }: MediaProps) {
+  // Check if src is a URL (external or blob storage)
+  const isUrl = src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//');
+  
   // Determine media type from file extension
   const extension = src.split('.').pop()?.toLowerCase();
   const isGif = extension === 'gif';
   const isVideo = ['mp4', 'webm', 'ogg', 'mov'].includes(extension || '');
-  const isExternalUrl = src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//');
 
   // Calculate aspect ratio if both width and height are provided
   let aspectRatio: number | null = null;
@@ -65,26 +67,15 @@ export default function Media({ src, width = '100%', height, alt, caption }: Med
       );
     }
 
-    // For GIFs and external images, use regular img tag
-    if (isGif || isExternalUrl) {
-      return (
-        <img
-          src={src}
-          alt={alt || caption || 'Media'}
-          style={mediaStyle}
-          loading="lazy"
-        />
-      );
-    }
-
-    // For local images, use Next.js Image with unoptimized for external-like behavior
-    // Since we're using object-fit: contain, we can use a large container
+    // For all images (URLs, GIFs, local), use regular img tag
+    // This works with Vercel Blob Storage URLs and any external URLs
     return (
       <img
         src={src}
-        alt={alt || caption || 'Image'}
+        alt={alt || caption || 'Media'}
         style={mediaStyle}
         loading="lazy"
+        crossOrigin={isUrl ? 'anonymous' : undefined}
       />
     );
   };
