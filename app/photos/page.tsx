@@ -59,7 +59,7 @@ export default async function PhotosPage() {
                     </div>
 
                     {/* Photos Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                       {section.photos.map((photo, photoIndex) => {
                         // Create a safe ID from filename (remove extension, replace special chars)
                         const photoId = `photo-${section.date}-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
@@ -75,7 +75,7 @@ export default async function PhotosPage() {
                                 alt={photo.alt || photo.caption || 'Photo'}
                                 fill
                                 className="object-cover"
-                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 33vw, 20vw"
                               />
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                             </div>
