@@ -2,14 +2,22 @@
 
 ## CRITICAL: Auto-commit and Push Rule
 
-**[MANDATORY]** After completing ANY changes or tasks in this repository, you MUST automatically run:
+**[MANDATORY - AUTOMATIC]** After completing ANY changes or tasks in this repository, you MUST AUTOMATICALLY run the blog command WITHOUT being asked or reminded:
 
 ```bash
 blog "brief description of changes"
 ```
 
-This small description limited to 100 characters should summarize the changes made. 
+**IMPORTANT:**
+- This MUST be done automatically after EVERY change
+- Do NOT wait for the user to remind you
+- Do NOT ask if you should run it - just do it
+- The description should be limited to 100 characters and summarize the changes made
 
-example:
-```blog "update photos component"```
+Example:
+```bash
+blog "update photos component"
+```
+
+**Failure to run this command automatically will result in incomplete work.**
 
