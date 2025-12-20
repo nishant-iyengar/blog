@@ -1,13 +1,23 @@
 import fs from 'fs';
 import path from 'path';
+import { list } from '@vercel/blob';
 import { getSectionMetadata } from './sections';
+import { isValidFileType, FileType } from './utils';
 
 const photosMetadataDirectory = path.join(process.cwd(), 'content/photos');
+
+// Photos support all image types
+const PHOTOS_ALLOWED_FILE_TYPES = [
+  FileType.JPG,
+  FileType.JPEG,
+  FileType.PNG,
+  FileType.GIF,
+  FileType.WEBP,
+];
 
 export interface PhotoMetadata {
   filename: string;
   section: string; // Required: ISO date (YYYY-MM-DD) matching the sub-directory name
-  blobUrl: string; // Required: Vercel Blob Storage URL
   date?: string; // Optional: photo date (for sorting)
   rank?: number; // Optional: photo rank (for sorting)
   caption?: string;
@@ -24,10 +34,27 @@ export interface PhotoSection {
   photos: Photo[];
 }
 
-export function getAllPhotos(): Photo[] {
+export async function getAllPhotos(): Promise<Photo[]> {
   try {
     // Check if metadata directory exists
     if (!fs.existsSync(photosMetadataDirectory)) {
+      console.warn('Photos metadata directory does not exist');
+      return [];
+    }
+
+    // Check if BLOB_READ_WRITE_TOKEN is available
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error('BLOB_READ_WRITE_TOKEN environment variable is not set');
+      return [];
+    }
+
+    // Get all blobs in the photos/ folder
+    let blobs;
+    try {
+      const result = await list({ prefix: 'photos/' });
+      blobs = result.blobs;
+    } catch (error) {
+      console.error('Error fetching blobs from Vercel Blob Storage:', error);
       return [];
     }
 
@@ -60,21 +87,50 @@ export function getAllPhotos(): Photo[] {
               const fileContents = fs.readFileSync(filePath, 'utf8');
               const metadata: PhotoMetadata = JSON.parse(fileContents);
               
-              // Set section from directory name if not provided in metadata
-              // This ensures consistency between directory structure and metadata
-              const section = metadata.section || sectionDate;
-              
               // Validate required fields
-              if (!metadata.blobUrl) {
-                console.warn(`Photo ${file} in ${sectionDate} is missing required 'blobUrl' property`);
+              if (!metadata.filename) {
+                console.warn(`Photo ${file} in ${sectionDate} is missing required 'filename' property`);
                 return;
               }
               
-              // Only include photos with valid blobUrl
+              // Set section from directory name if not provided in metadata
+              const section = metadata.section || sectionDate;
+              
+              // Validate file type
+              if (!isValidFileType(metadata.filename, PHOTOS_ALLOWED_FILE_TYPES)) {
+                console.warn(`Photo ${metadata.filename} has unsupported file type`);
+                return;
+              }
+              
+              // Find the blob that matches the filename
+              // Expected blob path structure: photos/<date>/photo.jpeg or photos/<date>/<timestamp>-photo.jpeg
+              const matchingBlobs = blobs.filter(blob => {
+                // Primary: Match photos/<date>/filename (with or without timestamp prefix)
+                const matchesDateSubdir = blob.pathname.startsWith(`photos/${sectionDate}/`) && 
+                                         blob.pathname.endsWith(metadata.filename);
+                
+                // Fallback: Match photos/filename (root level)
+                const matchesRoot = blob.pathname === `photos/${metadata.filename}`;
+                
+                // Also validate the blob's file type
+                return (matchesDateSubdir || matchesRoot) && isValidFileType(blob.pathname, PHOTOS_ALLOWED_FILE_TYPES);
+              });
+              
+              if (matchingBlobs.length === 0) {
+                console.warn(`Photo ${metadata.filename} not found in blob storage`);
+                return;
+              }
+              
+              // If multiple matches (e.g., different timestamps), use the most recent one
+              const matchingBlob = matchingBlobs.sort((a, b) => 
+                new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+              )[0];
+              
+              // Only include photos with valid blob match
               photos.push({
                 ...metadata,
                 section, // Use directory name as section
-                src: metadata.blobUrl,
+                src: matchingBlob.url,
               });
             }
           });
@@ -91,20 +147,43 @@ export function getAllPhotos(): Photo[] {
         const metadata: PhotoMetadata = JSON.parse(fileContents);
         
         // Validate required fields
+        if (!metadata.filename) {
+          console.warn(`Photo ${entry.name} is missing required 'filename' property`);
+          return;
+        }
+        
         if (!metadata.section) {
           console.warn(`Photo ${entry.name} is missing required 'section' property`);
           return;
         }
         
-        if (!metadata.blobUrl) {
-          console.warn(`Photo ${entry.name} is missing required 'blobUrl' property`);
+        // Validate file type
+        if (!isValidFileType(metadata.filename, PHOTOS_ALLOWED_FILE_TYPES)) {
+          console.warn(`Photo ${metadata.filename} has unsupported file type`);
           return;
         }
         
-        // Only include photos with valid blobUrl
+        // Find the blob that matches the filename
+        const matchingBlobs = blobs.filter(blob => {
+          const blobMatches = blob.pathname.endsWith(metadata.filename) || 
+                             blob.pathname === `photos/${metadata.filename}`;
+          
+          return blobMatches && isValidFileType(blob.pathname, PHOTOS_ALLOWED_FILE_TYPES);
+        });
+        
+        if (matchingBlobs.length === 0) {
+          console.warn(`Photo ${metadata.filename} not found in blob storage`);
+          return;
+        }
+        
+        // If multiple matches, use the most recent one
+        const matchingBlob = matchingBlobs.sort((a, b) => 
+          new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+        )[0];
+        
         photos.push({
           ...metadata,
-          src: metadata.blobUrl,
+          src: matchingBlob.url,
         });
       }
     });
@@ -117,8 +196,8 @@ export function getAllPhotos(): Photo[] {
   }
 }
 
-export function getPhotosBySection(): PhotoSection[] {
-  const photos = getAllPhotos();
+export async function getPhotosBySection(): Promise<PhotoSection[]> {
+  const photos = await getAllPhotos();
   const sectionsMap = new Map<string, PhotoSection>();
 
   photos.forEach((photo) => {

@@ -2,8 +2,11 @@ import Sidebar from '@/components/Sidebar';
 import { getPhotosBySection } from '@/lib/photos';
 import Image from 'next/image';
 
-export default function PhotosPage() {
-  const sections = getPhotosBySection();
+// Force dynamic rendering to ensure blob storage API calls work at runtime
+export const dynamic = 'force-dynamic';
+
+export default async function PhotosPage() {
+  const sections = await getPhotosBySection();
 
   const formatDate = (dateString: string): string => {
     try {
