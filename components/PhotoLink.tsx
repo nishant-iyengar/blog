@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface PhotoLinkProps {
   id: string;
@@ -9,6 +10,9 @@ interface PhotoLinkProps {
 }
 
 export default function PhotoLink({ id, children, className }: PhotoLinkProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+
   useEffect(() => {
     // Check if there's a hash in the URL on mount
     if (typeof window !== 'undefined') {
@@ -25,27 +29,34 @@ export default function PhotoLink({ id, children, className }: PhotoLinkProps) {
     }
   }, [id]);
 
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    // Let the browser handle the hash navigation naturally
-    // This ensures the URL updates properly in the address bar
-    const element = document.getElementById(id);
-    if (element) {
-      // Small delay to let the hash update first
-      setTimeout(() => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Update URL hash using Next.js router
+    router.push(`${pathname}#${id}`, { scroll: false });
+    // Scroll to element
+    setTimeout(() => {
+      const element = document.getElementById(id);
+      if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 10);
-    }
+      }
+    }, 10);
   };
 
   return (
-    <a 
+    <div 
       id={id} 
-      href={`#${id}`}
       onClick={handleClick} 
       className={className}
-      style={{ textDecoration: 'none', color: 'inherit' }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick(e as any);
+        }
+      }}
     >
       {children}
-    </a>
+    </div>
   );
 }
