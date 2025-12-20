@@ -1,6 +1,8 @@
 import Sidebar from '@/components/Sidebar';
 import { getPhotosBySection } from '@/lib/photos';
 import Image from 'next/image';
+import SectionLink from '@/components/SectionLink';
+import PhotoLink from '@/components/PhotoLink';
 
 // Force dynamic rendering to ensure blob storage API calls work at runtime
 export const dynamic = 'force-dynamic';
@@ -39,47 +41,57 @@ export default async function PhotosPage() {
           </header>
 
           <div className="space-y-12">
-            {sections.map((section, sectionIndex) => (
-              <section key={sectionIndex} className="scroll-mt-8">
-                {/* Section Header */}
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-[#4A5568] mb-2">
-                    {formatDate(section.date)}
-                  </h2>
-                  {section.description && (
-                    <p className="text-sm text-[#718096] leading-5">
-                      {section.description}
-                    </p>
-                  )}
-                </div>
-
-                {/* Photos Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {section.photos.map((photo, photoIndex) => (
-                    <div
-                      key={photoIndex}
-                      className="group relative overflow-hidden rounded-lg bg-white cursor-pointer transition-transform duration-300 hover:scale-105 shadow-sm"
-                    >
-                      <div className="relative aspect-square w-full">
-                        <Image
-                          src={photo.src}
-                          alt={photo.alt || photo.caption || 'Photo'}
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
-                      </div>
-                      {photo.caption && (
-                        <div className="p-3 bg-white">
-                          <p className="text-sm text-[#718096]">{photo.caption}</p>
-                        </div>
+            {sections.map((section, sectionIndex) => {
+              const sectionId = `section-${section.date}`;
+              return (
+                <SectionLink key={sectionIndex} id={sectionId} className="scroll-mt-8">
+                  <section>
+                    {/* Section Header */}
+                    <div className="mb-6">
+                      <h2 className="text-2xl font-bold text-[#4A5568] mb-2">
+                        {formatDate(section.date)}
+                      </h2>
+                      {section.description && (
+                        <p className="text-sm text-[#718096] leading-5">
+                          {section.description}
+                        </p>
                       )}
                     </div>
-                  ))}
-                </div>
-              </section>
-            ))}
+
+                    {/* Photos Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {section.photos.map((photo, photoIndex) => {
+                        // Create a safe ID from filename (remove extension, replace special chars)
+                        const photoId = `photo-${section.date}-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+                        return (
+                          <PhotoLink
+                            key={photoIndex}
+                            id={photoId}
+                            className="group relative overflow-hidden rounded-lg bg-white cursor-pointer transition-transform duration-300 hover:scale-105 shadow-sm"
+                          >
+                            <div className="relative aspect-square w-full">
+                              <Image
+                                src={photo.src}
+                                alt={photo.alt || photo.caption || 'Photo'}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+                            </div>
+                            {photo.caption && (
+                              <div className="p-3 bg-white">
+                                <p className="text-sm text-[#718096]">{photo.caption}</p>
+                              </div>
+                            )}
+                          </PhotoLink>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </SectionLink>
+              );
+            })}
           </div>
 
           {sections.length === 0 && (

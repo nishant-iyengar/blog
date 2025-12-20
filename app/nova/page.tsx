@@ -1,6 +1,7 @@
 import Sidebar from '@/components/Sidebar';
 import { getAllNovaPhotos } from '@/lib/nova';
 import Image from 'next/image';
+import PhotoLink from '@/components/PhotoLink';
 
 // Force dynamic rendering to ensure blob storage API calls work at runtime
 export const dynamic = 'force-dynamic';
@@ -37,35 +38,40 @@ export default async function NovaPage() {
 
           {/* Simple Gallery Grid - No Sections */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {photos.map((photo, index) => (
-              <div
-                key={index}
-                className="group relative overflow-hidden rounded-lg bg-white cursor-pointer transition-transform duration-300 hover:scale-105 shadow-sm"
-              >
-                <div className="relative aspect-square w-full">
-                  <Image
-                    src={photo.src}
-                    alt={photo.alt || photo.caption || 'Nova photo'}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
-                </div>
-                {(photo.date || photo.caption) && (
-                  <div className="p-3 bg-white">
-                    <p className="text-sm text-[#718096]">
-                      {photo.date && (
-                        <span className="font-medium">{formatDate(photo.date)}</span>
-                      )}
-                      {photo.caption && (
-                        <span className={photo.date ? "ml-2" : ""}>{photo.caption}</span>
-                      )}
-                    </p>
+            {photos.map((photo, index) => {
+              // Create a safe ID from filename (remove extension, replace special chars)
+              const photoId = `nova-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+              return (
+                <PhotoLink
+                  key={index}
+                  id={photoId}
+                  className="group relative overflow-hidden rounded-lg bg-white cursor-pointer transition-transform duration-300 hover:scale-105 shadow-sm"
+                >
+                  <div className="relative aspect-square w-full">
+                    <Image
+                      src={photo.src}
+                      alt={photo.alt || photo.caption || 'Nova photo'}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                   </div>
-                )}
-              </div>
-            ))}
+                  {(photo.date || photo.caption) && (
+                    <div className="p-3 bg-white">
+                      <p className="text-sm text-[#718096]">
+                        {photo.date && (
+                          <span className="font-medium">{formatDate(photo.date)}</span>
+                        )}
+                        {photo.caption && (
+                          <span className={photo.date ? "ml-2" : ""}>{photo.caption}</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </PhotoLink>
+              );
+            })}
           </div>
 
           {photos.length === 0 && (
