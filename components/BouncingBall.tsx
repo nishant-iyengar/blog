@@ -10,7 +10,7 @@ interface BouncingBallProps {
 export default function BouncingBall({ ballSize = 12, speed = 2 }: BouncingBallProps) {
   const ballRef = useRef<HTMLDivElement>(null);
   const slantRef = useRef<HTMLDivElement>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const positionRef = useRef({ x: 100, y: 100 });
   const velocityRef = useRef({ x: speed, y: speed });
   const [isMobile, setIsMobile] = useState(false);
