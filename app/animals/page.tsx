@@ -24,21 +24,21 @@ export default async function AnimalsPage() {
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
-      <Sidebar />
-      <div className="flex flex-col md:flex-row pt-[60px] md:pt-0">
+      <div className="flex flex-col md:flex-row pt-[60px] md:pt-0 w-full">
         <Sidebar />
         
         {/* Main Content */}
-        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8 w-full">
-          <header className="mb-8 flex justify-end">
-            <div className="text-right">
-              <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
-              <div className="text-sm text-[#718096] mt-1">iyengar.nish@gmail.com</div>
-            </div>
-          </header>
+        <main className="flex-1 min-w-0 px-4 md:px-8 py-8">
+          <div className="max-w-6xl mx-auto">
+            <header className="mb-8 flex justify-end">
+              <div className="text-right">
+                <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
+                <div className="text-sm text-[#718096] mt-1">iyengar.nish@gmail.com</div>
+              </div>
+            </header>
 
-          {/* Simple Gallery Grid - No Sections */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Simple Gallery Grid - No Sections */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {photos.map((photo, index) => {
               // Create a safe ID from filename (remove extension, replace special chars)
               const photoId = `animals-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
@@ -73,13 +73,14 @@ export default async function AnimalsPage() {
                 </PhotoLink>
               );
             })}
-          </div>
-
-          {photos.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-[#718096]">No photos yet. Add photos to the content/animals directory.</p>
             </div>
-          )}
+
+            {photos.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-[#718096]">No photos yet. Add photos to the content/animals directory.</p>
+              </div>
+            )}
+          </div>
         </main>
       </div>
     </div>

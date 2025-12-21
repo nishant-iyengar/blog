@@ -28,20 +28,20 @@ export default async function PhotosPage() {
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
-      <Sidebar />
-      <div className="flex flex-col md:flex-row pt-[60px] md:pt-0">
+      <div className="flex flex-col md:flex-row pt-[60px] md:pt-0 w-full">
         <Sidebar />
         
         {/* Main Content */}
-        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8 w-full">
-          <header className="mb-8 flex justify-end">
-            <div className="text-right">
-              <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
-              <div className="text-sm text-[#718096] mt-1">iyengar.nish@gmail.com</div>
-            </div>
-          </header>
+        <main className="flex-1 min-w-0 px-4 md:px-8 py-8">
+          <div className="max-w-7xl mx-auto">
+            <header className="mb-8 flex justify-end">
+              <div className="text-right">
+                <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
+                <div className="text-sm text-[#718096] mt-1">iyengar.nish@gmail.com</div>
+              </div>
+            </header>
 
-          <div className="space-y-12">
+            <div className="space-y-12">
             {sections.map((section, sectionIndex) => {
               const sectionId = `section-${section.date}`;
               return (
@@ -60,7 +60,7 @@ export default async function PhotosPage() {
                     </div>
 
                     {/* Photos Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {section.photos.map((photo, photoIndex) => {
                         // Create a safe ID from filename (remove extension, replace special chars)
                         const photoId = `photo-${section.date}-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
@@ -76,7 +76,7 @@ export default async function PhotosPage() {
                                 alt={photo.alt || photo.caption || 'Photo'}
                                 fill
                                 className="object-cover"
-                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 33vw, 20vw"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                               />
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                             </div>
@@ -93,13 +93,14 @@ export default async function PhotosPage() {
                 </SectionLink>
               );
             })}
-          </div>
+            </div>
 
-          {sections.length === 0 && (
+            {sections.length === 0 && (
             <div className="text-center py-12">
               <p className="text-[#718096]">No photos yet. Add photos to the content/photos directory.</p>
             </div>
           )}
+          </div>
         </main>
       </div>
     </div>
