@@ -1,6 +1,7 @@
 import type { MDXComponents } from 'mdx/types';
 import { ReactNode } from 'react';
 import Media from '@/components/Media';
+import RotatingWords from '@/components/RotatingWords';
 import { getPostMediaPath } from '@/lib/posts';
 
 export function useMDXComponents(components: MDXComponents = {}, postSlug?: string): MDXComponents {
@@ -16,6 +17,7 @@ export function useMDXComponents(components: MDXComponents = {}, postSlug?: stri
 
   return {
     Media: MediaWithSlug,
+    RotatingWords,
     // Customize built-in components
     h1: ({ children }: { children?: ReactNode }) => (
       <h1 className="text-2xl font-bold mb-4 mt-6 text-[#629C77]">{children}</h1>

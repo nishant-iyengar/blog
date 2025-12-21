@@ -33,7 +33,7 @@ export default async function PostPage({ params }: PageProps) {
         <Sidebar />
         
         {/* Main Content */}
-        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8">
+        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8 w-full">
           <header className="mb-8 flex justify-end">
             <div className="text-right">
               <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
@@ -41,14 +41,16 @@ export default async function PostPage({ params }: PageProps) {
             </div>
           </header>
           
-          <article className="bg-white rounded-lg border border-[#E2E8F0] p-8 md:p-12 shadow-sm">
+          <article className="bg-white rounded-lg border border-[#E2E8F0] p-8 md:p-12 shadow-sm mx-auto">
             <header className="mb-6">
               <h1 className="text-2xl font-bold text-[#629C77] mb-3">
                 {toSentenceCase(post.metadata.title)}
               </h1>
-              <p className="text-sm text-[#718096] mb-2 leading-5">
-                {post.metadata.excerpt}
-              </p>
+              {post.metadata.excerpt && (
+                <p className="text-sm text-[#718096] mb-2 leading-5">
+                  {post.metadata.excerpt}
+                </p>
+              )}
               <time className="text-xs text-[#718096]">
                 {new Date(post.metadata.date).toLocaleDateString('en-US', {
                   year: 'numeric',

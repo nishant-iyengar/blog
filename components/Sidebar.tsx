@@ -58,6 +58,12 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* Mobile Navigation Bar - Always visible at top on mobile */}
+      <nav className="md:hidden w-full bg-[#EDF2F7] border-b border-[#E2E8F0] px-4 py-3 sticky top-0 z-50">
+        <Navigation />
+      </nav>
+
+      {/* Desktop Sidebar */}
       <aside
         ref={sidebarRef}
         className={`hidden md:block relative transition-all duration-300 ease-in-out ${

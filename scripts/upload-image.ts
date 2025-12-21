@@ -6,7 +6,7 @@
  * 
  * Examples:
  *   pnpm tsx scripts/upload-image.ts ./my-photo.jpg photos
- *   pnpm tsx scripts/upload-image.ts ./nova-photo.jpg nova --update-metadata
+ *   pnpm tsx scripts/upload-image.ts ./animal-photo.jpg animals --update-metadata
  */
 
 import { put } from '@vercel/blob';
@@ -19,15 +19,15 @@ const filteredArgs = args.filter(arg => arg !== '--update-metadata');
 
 if (filteredArgs.length < 2) {
   console.error('Usage: pnpm tsx scripts/upload-image.ts <image-path> <category> [--update-metadata]');
-  console.error('  category: "photos" or "nova"');
+  console.error('  category: "photos" or "animals"');
   console.error('  --update-metadata: Automatically create/update JSON metadata file');
   process.exit(1);
 }
 
 const [imagePath, category] = filteredArgs;
 
-if (!['photos', 'nova'].includes(category)) {
-  console.error('Category must be "photos" or "nova"');
+if (!['photos', 'animals'].includes(category)) {
+  console.error('Category must be "photos" or "animals"');
   process.exit(1);
 }
 

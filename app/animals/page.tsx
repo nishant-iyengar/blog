@@ -1,5 +1,5 @@
 import Sidebar from '@/components/Sidebar';
-import { getAllNovaPhotos } from '@/lib/nova';
+import { getAllAnimalPhotos } from '@/lib/animals';
 import Image from 'next/image';
 import PhotoLink from '@/components/PhotoLink';
 
@@ -19,8 +19,8 @@ function formatDate(dateString: string): string {
   }
 }
 
-export default async function NovaPage() {
-  const photos = await getAllNovaPhotos();
+export default async function AnimalsPage() {
+  const photos = await getAllAnimalPhotos();
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
@@ -28,7 +28,7 @@ export default async function NovaPage() {
         <Sidebar />
         
         {/* Main Content */}
-        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8">
+        <main className="flex-1 max-w-6xl mx-auto px-4 md:px-8 py-8 w-full">
           <header className="mb-8 flex justify-end">
             <div className="text-right">
               <div className="text-base text-[#4A5568]">Nishant Iyengar</div>
@@ -40,7 +40,7 @@ export default async function NovaPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {photos.map((photo, index) => {
               // Create a safe ID from filename (remove extension, replace special chars)
-              const photoId = `nova-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+              const photoId = `animals-${photo.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
               return (
                 <PhotoLink
                   key={index}
@@ -50,7 +50,7 @@ export default async function NovaPage() {
                   <div className="relative aspect-square w-full">
                     <Image
                       src={photo.src}
-                      alt={photo.alt || photo.caption || 'Nova photo'}
+                      alt={photo.alt || photo.caption || 'Animal photo'}
                       fill
                       className="object-cover"
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -76,7 +76,7 @@ export default async function NovaPage() {
 
           {photos.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-[#718096]">No photos yet. Add photos to the content/nova directory.</p>
+              <p className="text-[#718096]">No photos yet. Add photos to the content/animals directory.</p>
             </div>
           )}
         </main>
