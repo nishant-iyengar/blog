@@ -48,6 +48,22 @@ export async function getAllPhotos(): Promise<Photo[]> {
       return [];
     }
 
+    // Read photos.json file
+    const photosJsonPath = path.join(photosMetadataDirectory, 'photos.json');
+    if (!fs.existsSync(photosJsonPath)) {
+      console.warn('photos.json file does not exist');
+      return [];
+    }
+
+    const photosJsonContent = fs.readFileSync(photosJsonPath, 'utf8');
+    const photosMetadata: PhotoMetadata[] = JSON.parse(photosJsonContent);
+
+    // Validate that it's an array
+    if (!Array.isArray(photosMetadata)) {
+      console.error('photos.json must contain an array of photo metadata');
+      return [];
+    }
+
     // Get all blobs in the photos/ folder
     let blobs;
     try {
@@ -59,138 +75,55 @@ export async function getAllPhotos(): Promise<Photo[]> {
     }
 
     const photos: Photo[] = [];
-    const entries = fs.readdirSync(photosMetadataDirectory, { withFileTypes: true });
 
-    entries.forEach((entry) => {
-      // Skip sections.json if it's in the root
-      if (entry.isFile() && entry.name === 'sections.json') {
+    photosMetadata.forEach((metadata) => {
+      // Validate required fields
+      if (!metadata.filename) {
+        console.warn(`Photo is missing required 'filename' property`);
         return;
       }
 
-      // If it's a directory (ISO date sub-folder), read JSON files from it
-      if (entry.isDirectory()) {
-        const sectionDate = entry.name; // Directory name is the ISO date (section)
-        const sectionPath = path.join(photosMetadataDirectory, sectionDate);
-        
-        // Validate that the directory name is a valid ISO date format (YYYY-MM-DD)
-        const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!isoDateRegex.test(sectionDate)) {
-          console.warn(`Photo directory ${sectionDate} does not match ISO date format (YYYY-MM-DD)`);
-          return;
-        }
+      if (!metadata.section) {
+        console.warn(`Photo ${metadata.filename} is missing required 'section' property`);
+        return;
+      }
 
-        try {
-          const files = fs.readdirSync(sectionPath);
-          files.forEach((file) => {
-            if (file.endsWith('.json')) {
-              const filePath = path.join(sectionPath, file);
-              const fileContents = fs.readFileSync(filePath, 'utf8');
-              const metadata: PhotoMetadata = JSON.parse(fileContents);
-              
-              // Validate required fields
-              if (!metadata.filename) {
-                console.warn(`Photo ${file} in ${sectionDate} is missing required 'filename' property`);
-                return;
-              }
-              
-              // Set section from directory name if not provided in metadata
-              const section = metadata.section || sectionDate;
-              
-              // Validate file type
-              if (!isValidFileType(metadata.filename, PHOTOS_ALLOWED_FILE_TYPES)) {
-                console.warn(`Photo ${metadata.filename} has unsupported file type`);
-                return;
-              }
-              
-              // Find the blob that matches the filename
-              // Expected blob path structure: photos/<date>/photo.jpeg or photos/<date>/<timestamp>-photo.jpeg
-              const matchingBlobs = blobs.filter(blob => {
-                // Primary: Match photos/<date>/filename (with or without timestamp prefix)
-                const matchesDateSubdir = blob.pathname.startsWith(`photos/${sectionDate}/`) && 
-                                         blob.pathname.endsWith(metadata.filename);
-                
-                // Fallback: Match photos/filename (root level)
-                const matchesRoot = blob.pathname === `photos/${metadata.filename}`;
-                
-                // Also validate the blob's file type
-                return (matchesDateSubdir || matchesRoot) && isValidFileType(blob.pathname, PHOTOS_ALLOWED_FILE_TYPES);
-              });
-              
-              if (matchingBlobs.length === 0) {
-                console.warn(`Photo ${metadata.filename} not found in blob storage`);
-                return;
-              }
-              
-              // If multiple matches (e.g., different timestamps), use the most recent one
-              const matchingBlob = matchingBlobs.sort((a, b) => 
-                new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-              )[0];
-              
-              // Only include photos with valid blob match
-              photos.push({
-                ...metadata,
-                section, // Use directory name as section
-                src: matchingBlob.url,
-              });
-            }
-          });
-        } catch (error) {
-          console.warn(`Error reading photos from directory ${sectionDate}:`, error);
-        }
+      // Validate file type
+      if (!isValidFileType(metadata.filename, PHOTOS_ALLOWED_FILE_TYPES)) {
+        console.warn(`Photo ${metadata.filename} has unsupported file type`);
+        return;
       }
-      
-      // Also support legacy structure: JSON files directly in photos directory
-      // (for backward compatibility)
-      if (entry.isFile() && entry.name.endsWith('.json')) {
-        const filePath = path.join(photosMetadataDirectory, entry.name);
-        const fileContents = fs.readFileSync(filePath, 'utf8');
-        const metadata: PhotoMetadata = JSON.parse(fileContents);
+
+      // Find the blob that matches the filename
+      // Try to match photos/<section>/filename or photos/filename
+      const matchingBlobs = blobs.filter(blob => {
+        const matchesSectionSubdir = blob.pathname.startsWith(`photos/${metadata.section}/`) && 
+                                     blob.pathname.endsWith(metadata.filename);
+        const matchesRoot = blob.pathname === `photos/${metadata.filename}`;
+        const matchesAnySubdir = blob.pathname.endsWith(metadata.filename);
         
-        // Validate required fields
-        if (!metadata.filename) {
-          console.warn(`Photo ${entry.name} is missing required 'filename' property`);
-          return;
-        }
-        
-        if (!metadata.section) {
-          console.warn(`Photo ${entry.name} is missing required 'section' property`);
-          return;
-        }
-        
-        // Validate file type
-        if (!isValidFileType(metadata.filename, PHOTOS_ALLOWED_FILE_TYPES)) {
-          console.warn(`Photo ${metadata.filename} has unsupported file type`);
-          return;
-        }
-        
-        // Find the blob that matches the filename
-        const matchingBlobs = blobs.filter(blob => {
-          const blobMatches = blob.pathname.endsWith(metadata.filename) || 
-                             blob.pathname === `photos/${metadata.filename}`;
-          
-          return blobMatches && isValidFileType(blob.pathname, PHOTOS_ALLOWED_FILE_TYPES);
-        });
-        
-        if (matchingBlobs.length === 0) {
-          console.warn(`Photo ${metadata.filename} not found in blob storage`);
-          return;
-        }
-        
-        // If multiple matches, use the most recent one
-        const matchingBlob = matchingBlobs.sort((a, b) => 
-          new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-        )[0];
-        
-        photos.push({
-          ...metadata,
-          src: matchingBlob.url,
-        });
+        return (matchesSectionSubdir || matchesRoot || matchesAnySubdir) && 
+               isValidFileType(blob.pathname, PHOTOS_ALLOWED_FILE_TYPES);
+      });
+
+      if (matchingBlobs.length === 0) {
+        console.warn(`Photo ${metadata.filename} not found in blob storage`);
+        return;
       }
+
+      // If multiple matches, use the most recent one
+      const matchingBlob = matchingBlobs.sort((a, b) => 
+        new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+      )[0];
+
+      photos.push({
+        ...metadata,
+        src: matchingBlob.url,
+      });
     });
 
     return photos;
   } catch (error) {
-    // Directory doesn't exist yet or error reading, return empty array
     console.error('Error fetching photos:', error);
     return [];
   }
