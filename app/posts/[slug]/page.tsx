@@ -29,7 +29,6 @@ export default async function PostPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
-      <Sidebar />
       <div className="flex flex-col md:flex-row pt-[60px] md:pt-0">
         <Sidebar />
         
@@ -42,7 +41,7 @@ export default async function PostPage({ params }: PageProps) {
             </div>
           </header>
           
-          <article className="bg-white rounded-lg border border-[#E2E8F0] p-8 md:p-12 shadow-sm mx-auto">
+          <article data-article-tile className="bg-white rounded-lg border border-[#E2E8F0] p-8 md:p-12 shadow-sm mx-auto">
             <header className="mb-6">
               <h1 className="text-2xl font-bold text-[#629C77] mb-3">
                 {toSentenceCase(post.metadata.title)}

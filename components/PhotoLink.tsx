@@ -45,6 +45,7 @@ export default function PhotoLink({ id, children, className }: PhotoLinkProps) {
   return (
     <div 
       id={id} 
+      data-photo-tile
       onClick={handleClick} 
       className={className}
       role="button"

@@ -26,7 +26,7 @@ export default function PostTile({ slug, metadata }: PostTileProps) {
 
   return (
     <Link href={`/posts/${slug}`}>
-      <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 p-4 border border-[#E2E8F0] hover:border-[#629C77] cursor-pointer w-[280px] h-[200px] flex flex-col">
+      <div data-post-tile className="bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 p-4 border border-[#E2E8F0] hover:border-[#629C77] cursor-pointer w-[280px] h-[200px] flex flex-col">
         <h2 className="text-base font-semibold mb-2 text-[#629C77] line-clamp-2">
           {toSentenceCase(metadata.title)}
         </h2>
