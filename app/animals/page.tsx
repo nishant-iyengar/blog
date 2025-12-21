@@ -24,7 +24,8 @@ export default async function AnimalsPage() {
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
-      <div className="flex md:flex-row">
+      <Sidebar />
+      <div className="flex flex-col md:flex-row pt-[60px] md:pt-0">
         <Sidebar />
         
         {/* Main Content */}

@@ -7,7 +7,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
-      <div className="flex md:flex-row">
+      <div className="flex flex-col md:flex-row pt-[60px] md:pt-0">
         <Sidebar />
         
         {/* Main Content */}
@@ -19,7 +19,7 @@ export default function Home() {
             </div>
           </header>
           
-          <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+          <div className="flex flex-wrap gap-4 justify-start">
             {posts.map((post) => (
               <PostTile
                 key={post.slug}

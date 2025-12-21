@@ -11,10 +11,10 @@ export default function Navigation() {
   const isAnimals = pathname === '/animals';
 
   return (
-    <nav className="flex flex-row md:flex-col gap-3 md:gap-4">
+    <nav className="flex flex-row md:flex-col gap-2 md:gap-4 justify-center md:justify-start">
       <Link
         href="/"
-        className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+        className={`px-3 py-2 md:px-4 rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
           isBlogPosts
             ? 'bg-[#629C77] !text-white'
             : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
@@ -24,7 +24,7 @@ export default function Navigation() {
       </Link>
       <Link
         href="/photos"
-        className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+        className={`px-3 py-2 md:px-4 rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
           isPhotos
             ? 'bg-[#629C77] !text-white'
             : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
@@ -34,7 +34,7 @@ export default function Navigation() {
       </Link>
       <Link
         href="/animals"
-        className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+        className={`px-3 py-2 md:px-4 rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
           isAnimals
             ? 'bg-[#629C77] !text-white'
             : 'text-[#718096] hover:bg-[#EDF2F7] hover:text-[#4A5568]'
