@@ -9,8 +9,7 @@ interface BouncingBallProps {
 
 // Physics constants (moved outside component to avoid dependency issues)
 const G = 1.0; // Gravitational constant (scaled for simulation)
-const mSun = 100.0; // Mass of the sun (proportional to size - sun is 2x ball, so much heavier)
-const mBall = 1.0; // Mass of the ball (normalized to 1)
+const mSun = 125.0; // Mass of the sun (proportional to size - sun is 2x ball, so much heavier)
 const bounceDebounceMs = 50; // Minimum time between bounces (50ms)
 const numSuns = 10; // Number of static suns
 const sunDriftSpeed = 0.05; // Very slow drift speed for suns
