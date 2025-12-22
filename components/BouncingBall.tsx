@@ -17,7 +17,7 @@ const airFriction = 0.01; // Air friction factor (0.01 = 1% velocity loss per ap
 const frictionIntervalMs = 7000; // Apply friction every 7 seconds (7000ms)
 const maxBallSpeed = 6.0; // Maximum speed cap for the ball (pixels per frame)
 
-export default function BouncingBall({ ballSize = 12, speed = 2 }: BouncingBallProps) {
+export default function BouncingBall({ ballSize = 12, speed = 2.5 }: BouncingBallProps) {
   const ballRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const positionRef = useRef({ x: 100, y: 100 });
