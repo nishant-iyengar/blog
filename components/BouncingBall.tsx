@@ -14,8 +14,8 @@ const bounceDebounceMs = 50; // Minimum time between bounces (50ms)
 const numSuns = 10; // Number of static suns
 const sunDriftSpeed = 0.2; // slower drift speed for suns
 const airFriction = 0.01; // Air friction factor (0.01 = 1% velocity loss per application)
-const frictionIntervalMs = 15000; // Apply friction every 7 seconds (7000ms)
-const maxBallSpeed = 6.0; // Maximum speed cap for the ball (pixels per frame)
+const frictionIntervalMs = 12000; // Apply friction every 7 seconds (7000ms)
+const maxBallSpeed = 8.0; // Maximum speed cap for the ball (pixels per frame)
 
 export default function BouncingBall({ ballSize = 12, speed = 4 }: BouncingBallProps) {
   const ballRef = useRef<HTMLDivElement>(null);
@@ -523,7 +523,7 @@ export default function BouncingBall({ ballSize = 12, speed = 4 }: BouncingBallP
             height: `${sunSize}px`,
             borderRadius: '50%',
             backgroundColor: 'rgba(98, 156, 119, 0.75)', // Same green as ball (#629C77) with 75% opacity
-            boxShadow: '0 0 30px rgba(98, 156, 119, 0.8), 0 0 60px rgba(98, 156, 119, 0.6), 0 0 90px rgba(98, 156, 119, 0.4)',
+            boxShadow: '0 0 10px rgba(98, 156, 119, 0.5)',
             transform: 'translate(-50%, -50%)',
             left: `${sunPos.x}px`,
             top: `${sunPos.y}px`,
