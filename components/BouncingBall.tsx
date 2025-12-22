@@ -517,15 +517,18 @@ export default function BouncingBall({ ballSize = 12, speed = 2 }: BouncingBallP
       {sunPositions.map((sunPos, index) => (
         <div
           key={index}
-          className="fixed z-40 pointer-events-none rounded-full"
+          className="fixed z-40 pointer-events-none"
           style={{
             width: `${sunSize}px`,
             height: `${sunSize}px`,
+            borderRadius: '50%',
             backgroundColor: 'rgba(98, 156, 119, 0.75)', // Same green as ball (#629C77) with 75% opacity
             boxShadow: '0 0 30px rgba(98, 156, 119, 0.8), 0 0 60px rgba(98, 156, 119, 0.6), 0 0 90px rgba(98, 156, 119, 0.4)',
             transform: 'translate(-50%, -50%)',
             left: `${sunPos.x}px`,
             top: `${sunPos.y}px`,
+            border: 'none',
+            outline: 'none',
           }}
         />
       ))}
