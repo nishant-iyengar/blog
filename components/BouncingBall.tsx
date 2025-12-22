@@ -155,12 +155,31 @@ export default function BouncingBall({ ballSize = 12, speed = 4 }: BouncingBallP
     sunPositionsRef.current = positions;
     sunVelocitiesRef.current = velocities;
     
-    // Regenerate on resize
+    // Adjust positions on resize (preserve existing positions, just clamp to new boundaries)
     const handleResize = () => {
-      const { positions: newPositions, velocities: newVelocities } = generateSunPositions();
-      setSunPositions(newPositions);
-      sunPositionsRef.current = newPositions;
-      sunVelocitiesRef.current = newVelocities;
+      const sidebar = document.querySelector('aside');
+      const sidebarWidth = sidebar ? sidebar.getBoundingClientRect().width : 0;
+      const mobileNav = document.querySelector('nav.md\\:hidden');
+      const navBarHeight = mobileNav ? mobileNav.getBoundingClientRect().height : 0;
+      
+      const boundaries = {
+        left: sidebarWidth + sunSize,
+        right: window.innerWidth - sunSize,
+        top: navBarHeight + sunSize,
+        bottom: window.innerHeight - sunSize,
+      };
+      
+      const sunRadius = sunSize / 2;
+      
+      // Clamp existing positions to new boundaries
+      const adjustedPositions = sunPositionsRef.current.map((pos) => ({
+        x: Math.max(boundaries.left + sunRadius, Math.min(boundaries.right - sunRadius, pos.x)),
+        y: Math.max(boundaries.top + sunRadius, Math.min(boundaries.bottom - sunRadius, pos.y)),
+      }));
+      
+      setSunPositions(adjustedPositions);
+      sunPositionsRef.current = adjustedPositions;
+      // Keep velocities unchanged
     };
     
     window.addEventListener('resize', handleResize);
