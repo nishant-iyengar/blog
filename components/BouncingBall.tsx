@@ -12,9 +12,10 @@ const G = 1.0; // Gravitational constant (scaled for simulation)
 const mSun = 125.0; // Mass of the sun (proportional to size - sun is 2x ball, so much heavier)
 const bounceDebounceMs = 50; // Minimum time between bounces (50ms)
 const numSuns = 10; // Number of static suns
-const sunDriftSpeed = 0.05; // Very slow drift speed for suns
+const sunDriftSpeed = 0.1; // Very slow drift speed for suns
 const airFriction = 0.01; // Air friction factor (0.01 = 1% velocity loss per application)
 const frictionIntervalMs = 7000; // Apply friction every 7 seconds (7000ms)
+const maxBallSpeed = 6.0; // Maximum speed cap for the ball (pixels per frame)
 
 export default function BouncingBall({ ballSize = 12, speed = 2 }: BouncingBallProps) {
   const ballRef = useRef<HTMLDivElement>(null);
@@ -368,8 +369,56 @@ export default function BouncingBall({ ballSize = 12, speed = 2 }: BouncingBallP
         lastFrictionTimeRef.current = now;
       }
       
+      // Clamp velocity to maximum speed
+      const currentSpeed = Math.sqrt(velocityRef.current.x * velocityRef.current.x + velocityRef.current.y * velocityRef.current.y);
+      if (currentSpeed > maxBallSpeed) {
+        const scale = maxBallSpeed / currentSpeed;
+        velocityRef.current.x *= scale;
+        velocityRef.current.y *= scale;
+      }
+      
       let newX = positionRef.current.x + velocityRef.current.x;
       let newY = positionRef.current.y + velocityRef.current.y;
+      
+      // Check collisions with suns (circular collision detection)
+      const sunRadius = sunSize / 2;
+      const combinedRadius = ballRadius + sunRadius;
+      
+      if (sunPositionsRef.current.length > 0) {
+        for (const sunPos of sunPositionsRef.current) {
+          const sunCenterX = sunPos.x;
+          const sunCenterY = sunPos.y;
+          const ballCenterX = newX + ballRadius;
+          const ballCenterY = newY + ballRadius;
+          
+          // Calculate distance between ball and sun centers
+          const dx = sunCenterX - ballCenterX;
+          const dy = sunCenterY - ballCenterY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Check if colliding (distance < sum of radii)
+          if (distance < combinedRadius && distance > 0) {
+            // Calculate collision normal (from ball to sun)
+            const normalX = dx / distance;
+            const normalY = dy / distance;
+            
+            // Reflect velocity off the sun's surface
+            // Dot product of velocity and normal
+            const dotProduct = velocityRef.current.x * normalX + velocityRef.current.y * normalY;
+            
+            // Reflect: v' = v - 2 * (v · n) * n
+            velocityRef.current.x -= 2 * dotProduct * normalX;
+            velocityRef.current.y -= 2 * dotProduct * normalY;
+            
+            // Push ball away from sun to prevent overlap
+            const overlap = combinedRadius - distance;
+            newX -= normalX * overlap;
+            newY -= normalY * overlap;
+            
+            break; // Only handle one sun collision per frame
+          }
+        }
+      }
 
       // Check collisions with window boundaries (with debounce)
       const currentTime = Date.now();
