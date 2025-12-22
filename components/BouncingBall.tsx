@@ -15,9 +15,9 @@ const bounceDebounceMs = 50; // Minimum time between bounces (50ms)
 const numSuns = 10; // Number of static suns
 const sunDriftSpeed = 0.05; // Very slow drift speed for suns
 const airFriction = 0.01; // Air friction factor (0.01 = 1% velocity loss per application)
-const frictionIntervalMs = 2500; // Apply friction every 2.5 seconds (2500ms)
+const frictionIntervalMs = 7000; // Apply friction every 7 seconds (7000ms)
 
-export default function BouncingBall({ ballSize = 12, speed = 1.725 }: BouncingBallProps) {
+export default function BouncingBall({ ballSize = 12, speed = 2 }: BouncingBallProps) {
   const ballRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const positionRef = useRef({ x: 100, y: 100 });
