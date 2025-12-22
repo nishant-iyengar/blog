@@ -12,12 +12,12 @@ const G = 1.0; // Gravitational constant (scaled for simulation)
 const mSun = 125.0; // Mass of the sun (proportional to size - sun is 2x ball, so much heavier)
 const bounceDebounceMs = 50; // Minimum time between bounces (50ms)
 const numSuns = 10; // Number of static suns
-const sunDriftSpeed = 0.1; // Very slow drift speed for suns
+const sunDriftSpeed = 0.2; // slower drift speed for suns
 const airFriction = 0.01; // Air friction factor (0.01 = 1% velocity loss per application)
 const frictionIntervalMs = 7000; // Apply friction every 7 seconds (7000ms)
 const maxBallSpeed = 6.0; // Maximum speed cap for the ball (pixels per frame)
 
-export default function BouncingBall({ ballSize = 12, speed = 2.5 }: BouncingBallProps) {
+export default function BouncingBall({ ballSize = 12, speed = 2.4 }: BouncingBallProps) {
   const ballRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const positionRef = useRef({ x: 100, y: 100 });
