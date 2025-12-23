@@ -14,15 +14,15 @@ export default function TankTroublePage() {
   const barriersRef = useRef(typedMapData.barriers);
   const sunsRef = useRef(typedMapData.suns || []);
 
-  const { keysRef, isPaused } = useGameInput();
-  const tankImagesRef = useTankImages();
-
   const [tanks, setTanks] = useState<Tank[]>(() =>
     getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current)
   );
   const [bullets, setBullets] = useState<Bullet[]>([]);
   const [lastShotTimes, setLastShotTimes] = useState({ blue: 0, red: 0 });
   const [gameOverWinner, setGameOverWinner] = useState<'blue' | 'red' | null>(null);
+
+  const { keysRef, isPaused } = useGameInput({ gameOver: gameOverWinner !== null });
+  const tankImagesRef = useTankImages();
 
   const handleGameOver = (winner: 'blue' | 'red' | null) => {
     setGameOverWinner(winner);
@@ -39,12 +39,18 @@ export default function TankTroublePage() {
   useEffect(() => {
     if (!gameOverWinner) return;
     
-    const handleKeyDown = () => {
-      handleRestart();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Use capture phase to catch event before useGameInput stops propagation
+      if (gameOverWinner) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleRestart();
+      }
     };
     
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // Use capture phase (true) to catch event before useGameInput
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [gameOverWinner]);
 
   const { gameTick } = useGameLogic({

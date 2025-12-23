@@ -13,7 +13,7 @@ export const GAME_CONFIG = {
   // Bullet settings (60% slower - 40% of current speed)
   bullet: {
     speedMultiplier: 1.5, // Bullet speed = tank speed * this multiplier (60% slower: 2.4 * 0.4 = 0.96)
-    maxPerTank: 5,
+    maxPerTank: 10,
     maxAge: 8000, // Maximum lifetime in milliseconds (8 seconds)
     radius: 2, // Twice as big: 1 * 2 = 2
     collisionSize: 3, // 5 * 0.5 = 2.5, rounded to 3 
@@ -27,7 +27,7 @@ export const GAME_CONFIG = {
   
   // Sun physics (50% weaker - 50% of current strength)
   sun: {
-    gravitationalConstant: 0.09, // G - Gravitational constant for suns (50% weaker: 0.18 * 0.5 = 0.09)
+    gravitationalConstant: 0.1 , // G - Gravitational constant for suns (50% weaker: 0.18 * 0.5 = 0.09)
     mass: 120.0, // Mass of the sun (2x original)
     influenceRadius: 60, // 120 * 0.5 = 60
     minDistance: 2, // 4 * 0.5 = 2

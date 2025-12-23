@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 
-export function useGameInput() {
+interface UseGameInputOptions {
+  gameOver?: boolean;
+}
+
+export function useGameInput(options?: UseGameInputOptions) {
   const keysRef = useRef<Set<string>>(new Set());
   const [isPaused, setIsPaused] = useState(false);
+  const gameOverRef = useRef(options?.gameOver ?? false);
+
+  useEffect(() => {
+    gameOverRef.current = options?.gameOver ?? false;
+  }, [options?.gameOver]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip processing if game is over
+      if (gameOverRef.current) {
+        return;
+      }
       // Normalize key to lowercase, handle special cases
       let key: string;
       
@@ -45,6 +58,11 @@ export function useGameInput() {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      // Skip processing if game is over
+      if (gameOverRef.current) {
+        return;
+      }
+      
       // Normalize key to lowercase, handle special cases
       let key: string;
       
