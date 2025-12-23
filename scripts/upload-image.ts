@@ -13,6 +13,16 @@ import { put } from '@vercel/blob';
 import fs from 'fs';
 import path from 'path';
 
+interface PhotoMetadata {
+  filename?: string;
+  blobUrl?: string;
+  section?: string;
+  date?: string;
+  caption?: string;
+  alt?: string;
+  rank?: number;
+}
+
 const args = process.argv.slice(2);
 const updateMetadata = args.includes('--update-metadata');
 const filteredArgs = args.filter(arg => arg !== '--update-metadata');
@@ -60,10 +70,10 @@ async function uploadImage() {
       const metadataPath = path.join(metadataDir, metadataFilename);
 
       // Read existing metadata or create new
-      let metadata: any = {};
+      let metadata: PhotoMetadata = {};
       if (fs.existsSync(metadataPath)) {
         const existingContent = fs.readFileSync(metadataPath, 'utf8');
-        metadata = JSON.parse(existingContent);
+        metadata = JSON.parse(existingContent) as PhotoMetadata;
         console.log(`   Updating existing metadata: ${metadataFilename}`);
       } else {
         console.log(`   Creating new metadata: ${metadataFilename}`);

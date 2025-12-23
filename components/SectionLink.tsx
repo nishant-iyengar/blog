@@ -29,7 +29,7 @@ export default function SectionLink({ id, children, className }: SectionLinkProp
     }
   }, [id]);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
     // Update URL hash using Next.js router
     router.push(`${pathname}#${id}`, { scroll: false });
@@ -52,7 +52,7 @@ export default function SectionLink({ id, children, className }: SectionLinkProp
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          handleClick(e as any);
+          handleClick(e);
         }
       }}
     >

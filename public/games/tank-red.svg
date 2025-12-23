@@ -1,0 +1,9 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Tank body -->
+  <rect x="8" y="12" width="16" height="12" fill="#EF4444" stroke="#DC2626" stroke-width="1"/>
+  <!-- Tank turret -->
+  <circle cx="16" cy="18" r="6" fill="#F87171" stroke="#DC2626" stroke-width="1"/>
+  <!-- Tank barrel -->
+  <rect x="20" y="16" width="8" height="4" fill="#DC2626" rx="2"/>
+</svg>
+
