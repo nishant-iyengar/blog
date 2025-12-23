@@ -152,7 +152,6 @@ export function GameCanvas({
         width={width}
         height={height}
         className="border-2 border-[#4A5568] rounded outline-none"
-        style={{ transform: 'scale(1.3)', transformOrigin: 'top left' }}
         tabIndex={0}
         onFocus={(e) => e.target.focus()}
       />

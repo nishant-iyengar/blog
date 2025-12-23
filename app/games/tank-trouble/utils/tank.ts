@@ -120,7 +120,7 @@ export function updatePlayer2Tank(params: UpdateTankParams): UpdateTankResult {
     const dy = Math.sin(rad) * TANK_SPEED;
     const testX = newX + dx;
     const testY = newY + dy;
-    if (canMoveTo(testX, testY, mapWidth, mapHeight, barriers, allTanks, 1)) {
+    if (canMoveTo(testX, testY, mapWidth, mapHeight, barriers, allTanks, suns, 1)) {
       newX = testX;
       newY = testY;
     }
@@ -131,7 +131,7 @@ export function updatePlayer2Tank(params: UpdateTankParams): UpdateTankResult {
     const dy = -Math.sin(rad) * TANK_SPEED;
     const testX = newX + dx;
     const testY = newY + dy;
-    if (canMoveTo(testX, testY, mapWidth, mapHeight, barriers, allTanks, 1)) {
+    if (canMoveTo(testX, testY, mapWidth, mapHeight, barriers, allTanks, suns, 1)) {
       newX = testX;
       newY = testY;
     }

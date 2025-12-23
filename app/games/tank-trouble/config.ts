@@ -25,9 +25,9 @@ export const GAME_CONFIG = {
     shootingCooldown: 300, // Milliseconds between shots
   },
   
-  // Sun physics (scaled down by 50% - 50% of current)
+  // Sun physics (60% weaker - 40% of current strength)
   sun: {
-    gravitationalConstant: 0.75, // G - Gravitational constant for suns (50% stronger: 0.5 * 1.5 = 0.75)
+    gravitationalConstant: 0.3, // G - Gravitational constant for suns (60% weaker: 0.75 * 0.4 = 0.3)
     mass: 200.0, // Mass of the sun (2x original)
     influenceRadius: 60, // 120 * 0.5 = 60
     minDistance: 2, // 4 * 0.5 = 2
