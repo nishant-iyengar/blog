@@ -1,9 +1,9 @@
 // Game Configuration - Modify these values to adjust game rules
 export const GAME_CONFIG = {
-  // Tank settings (scaled down by 50% - 50% of current)
+  // Tank settings (40% bigger)
   tank: {
-    size: 17, // 34 * 0.5 = 17
-    collisionSize: 7, // 14 * 0.5 = 7
+    size: 24, // 17 * 1.4 = 23.8, rounded to 24
+    collisionSize: 10, // 7 * 1.4 = 9.8, rounded to 10
     speed: 1.12, // 2.24 * 0.5 = 1.12
     rotationSpeed: 5, // degrees per tick (keep same)
     lives: 3,
@@ -25,9 +25,9 @@ export const GAME_CONFIG = {
     shootingCooldown: 300, // Milliseconds between shots
   },
   
-  // Sun physics (60% weaker - 40% of current strength)
+  // Sun physics (40% weaker - 60% of current strength)
   sun: {
-    gravitationalConstant: 0.3, // G - Gravitational constant for suns (60% weaker: 0.75 * 0.4 = 0.3)
+    gravitationalConstant: 0.18, // G - Gravitational constant for suns (40% weaker: 0.3 * 0.6 = 0.18)
     mass: 200.0, // Mass of the sun (2x original)
     influenceRadius: 60, // 120 * 0.5 = 60
     minDistance: 2, // 4 * 0.5 = 2
@@ -36,7 +36,7 @@ export const GAME_CONFIG = {
   // Visual settings (scaled down by 50% - 50% of current)
   visual: {
     livesIndicatorRadius: 2, // 3 * 0.5 = 1.5, rounded to 2
-    livesIndicatorSpacing: 4, // 8 * 0.5 = 4
+    livesIndicatorSpacing: 3, // Reduced spacing for closer life indicators (was 4)
     livesIndicatorOffsetX: 3, // 6 * 0.5 = 3
     livesIndicatorOffsetY: -3, // -6 * 0.5 = -3
     uiTextSize: 7, // 13 * 0.5 = 6.5, rounded to 7

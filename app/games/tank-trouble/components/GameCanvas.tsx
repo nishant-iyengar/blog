@@ -53,9 +53,17 @@ export function GameCanvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Scale factor for crisp rendering
+    const scale = 2;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    
+    // Scale the context so all drawing operations are scaled
+    ctx.scale(scale, scale);
+
     // Clear canvas
     ctx.fillStyle = '#2D3748';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
 
     // Draw barriers
     ctx.fillStyle = '#4A5568';
@@ -76,7 +84,7 @@ export function GameCanvas({
       
       // Draw sun outline
       ctx.strokeStyle = 'rgba(98, 156, 119, 0.5)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 / scale;
       ctx.stroke();
     }
 
@@ -98,7 +106,7 @@ export function GameCanvas({
         ctx.fillStyle = tank.color === 'blue' ? '#3B82F6' : '#EF4444';
         ctx.fillRect(0, 0, TANK_SIZE, TANK_SIZE);
         ctx.strokeStyle = tank.color === 'blue' ? '#1E40AF' : '#DC2626';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 / scale;
         ctx.strokeRect(0, 0, TANK_SIZE, TANK_SIZE);
       }
 
@@ -131,16 +139,16 @@ export function GameCanvas({
     ctx.fillStyle = '#FFFFFF';
     ctx.font = `${GAME_CONFIG.visual.uiTextSize}px Inter`;
     ctx.fillText(`Blue: ${tanks[0]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY);
-    ctx.fillText(`Red: ${tanks[1]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY + 20);
+    ctx.fillText(`Red: ${tanks[1]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY + 12);
     
     // Draw pause indicator
     if (isPaused) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 48px Inter';
       ctx.textAlign = 'center';
-      ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2);
+      ctx.fillText('PAUSED', width / 2, height / 2);
       ctx.textAlign = 'left'; // Reset alignment
     }
   }, [width, height, tanks, bullets, barriers, suns, isPaused, tankImages]);
@@ -149,9 +157,8 @@ export function GameCanvas({
     <div className="flex flex-col items-start gap-4">
       <canvas
         ref={canvasRef}
-        width={width}
-        height={height}
         className="border-2 border-[#4A5568] rounded outline-none"
+        style={{ width: `${width * 2}px`, height: `${height * 2}px` }}
         tabIndex={0}
         onFocus={(e) => e.target.focus()}
       />
