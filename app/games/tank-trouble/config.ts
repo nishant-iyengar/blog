@@ -10,25 +10,25 @@ export const GAME_CONFIG = {
     spawnOffset: 2, // 4 * 0.5 = 2
   },
   
-  // Bullet settings (scaled down by 50% - 50% of current)
+  // Bullet settings (60% slower - 40% of current speed)
   bullet: {
-    speedMultiplier: 2.4, // Bullet speed = tank speed * this multiplier (20% slower: 3 * 0.8 = 2.4)
+    speedMultiplier: 1.5, // Bullet speed = tank speed * this multiplier (60% slower: 2.4 * 0.4 = 0.96)
     maxPerTank: 5,
     maxAge: 8000, // Maximum lifetime in milliseconds (8 seconds)
-    radius: 1, // 2 * 0.5 = 1
-    collisionSize: 3, // 5 * 0.5 = 2.5, rounded to 3
+    radius: 2, // Twice as big: 1 * 2 = 2
+    collisionSize: 3, // 5 * 0.5 = 2.5, rounded to 3 
   },
   
   // Game timing
   game: {
     tickRate: 72, // FPS (20% increase: 60 * 1.2 = 72)
-    shootingCooldown: 300, // Milliseconds between shots
+    shootingCooldown: 100, // Milliseconds between shots (reduced for rapid fire)
   },
   
-  // Sun physics (40% weaker - 60% of current strength)
+  // Sun physics (50% weaker - 50% of current strength)
   sun: {
-    gravitationalConstant: 0.18, // G - Gravitational constant for suns (40% weaker: 0.3 * 0.6 = 0.18)
-    mass: 200.0, // Mass of the sun (2x original)
+    gravitationalConstant: 0.09, // G - Gravitational constant for suns (50% weaker: 0.18 * 0.5 = 0.09)
+    mass: 120.0, // Mass of the sun (2x original)
     influenceRadius: 60, // 120 * 0.5 = 60
     minDistance: 2, // 4 * 0.5 = 2
   },

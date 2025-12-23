@@ -22,9 +22,33 @@ export default function TankTroublePage() {
   );
   const [bullets, setBullets] = useState<Bullet[]>([]);
   const [lastShotTimes, setLastShotTimes] = useState({ blue: 0, red: 0 });
+  const [gameOverWinner, setGameOverWinner] = useState<'blue' | 'red' | null>(null);
+
+  const handleGameOver = (winner: 'blue' | 'red' | null) => {
+    setGameOverWinner(winner);
+  };
+
+  const handleRestart = () => {
+    setGameOverWinner(null);
+    setTanks(getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current));
+    setBullets([]);
+    setLastShotTimes({ blue: 0, red: 0 });
+  };
+
+  // Handle restart on any key press when game is over
+  useEffect(() => {
+    if (!gameOverWinner) return;
+    
+    const handleKeyDown = () => {
+      handleRestart();
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gameOverWinner]);
 
   const { gameTick } = useGameLogic({
-    isPaused,
+    isPaused: isPaused || gameOverWinner !== null,
     keysRef,
     mapData: typedMapData,
     barriers: barriersRef.current,
@@ -35,6 +59,7 @@ export default function TankTroublePage() {
     onTanksUpdate: setTanks,
     onBulletsUpdate: setBullets,
     onLastShotTimesUpdate: setLastShotTimes,
+    onGameOver: handleGameOver,
   });
 
   // Game loop
@@ -65,6 +90,7 @@ export default function TankTroublePage() {
       suns={sunsRef.current}
       isPaused={isPaused}
       tankImages={tankImagesRef.current}
+      gameOverWinner={gameOverWinner}
     />
   );
 }

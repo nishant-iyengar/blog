@@ -58,9 +58,13 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       if (distance < GAME_CONFIG.bullet.collisionSize) {
-        // Both bullets disappear
-        bulletsToRemove.add(i);
-        bulletsToRemove.add(j);
+        // Both bullets start exploding
+        if (!bullet.exploding) {
+          bullets[i] = { ...bullet, exploding: true, explosionStartTime: tickTime };
+        }
+        if (!otherBullet.exploding) {
+          bullets[j] = { ...otherBullet, exploding: true, explosionStartTime: tickTime };
+        }
         break;
       }
     }
@@ -72,9 +76,21 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     
     const bullet = bullets[i];
     
+    // Check if bullet is exploding
+    if (bullet.exploding) {
+      const explosionDuration = 300; // 300ms explosion animation
+      if (bullet.explosionStartTime && tickTime - bullet.explosionStartTime < explosionDuration) {
+        // Keep exploding bullet for animation
+        updatedBullets.push(bullet);
+      }
+      continue; // Remove after animation
+    }
+
     // Check bullet age
     if (tickTime - bullet.createdAt > BULLET_MAX_AGE) {
-      continue; // Bullet expired
+      // Start explosion animation
+      updatedBullets.push({ ...bullet, exploding: true, explosionStartTime: tickTime });
+      continue;
     }
 
     // Apply gravitational force from suns
@@ -190,7 +206,9 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     }
     
     if (hitTank) {
-      continue; // Bullet disappears when hitting tank
+      // Start explosion animation
+      updatedBullets.push({ ...bullet, exploding: true, explosionStartTime: tickTime });
+      continue;
     }
 
     // Update angle based on new velocity

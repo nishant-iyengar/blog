@@ -28,6 +28,8 @@ export interface Bullet {
   createdAt: number; // timestamp in milliseconds
   vx: number; // velocity x component (for sun physics)
   vy: number; // velocity y component (for sun physics)
+  exploding?: boolean; // true when bullet is exploding
+  explosionStartTime?: number; // timestamp when explosion started
 }
 
 export interface Tank {
@@ -36,6 +38,13 @@ export interface Tank {
   angle: number; // in degrees
   lives: number;
   color: 'blue' | 'red';
+  exploding?: boolean; // true when tank is exploding
+  explosionStartTime?: number; // timestamp when explosion started
+  respawning?: boolean; // true when tank is respawning
+  respawnStartTime?: number; // timestamp when respawn animation started
+  respawnTargetX?: number; // target x position for respawn
+  respawnTargetY?: number; // target y position for respawn
+  respawnTargetAngle?: number; // target angle for respawn
 }
 
 export interface SpawnPosition {

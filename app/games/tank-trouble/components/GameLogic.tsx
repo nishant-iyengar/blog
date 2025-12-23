@@ -17,6 +17,7 @@ interface GameLogicProps {
   onTanksUpdate: (tanks: Tank[]) => void;
   onBulletsUpdate: (bullets: Bullet[]) => void;
   onLastShotTimesUpdate: (times: { blue: number; red: number }) => void;
+  onGameOver: (winner: 'blue' | 'red' | null) => void;
 }
 
 export function useGameLogic({
@@ -31,6 +32,7 @@ export function useGameLogic({
   onTanksUpdate,
   onBulletsUpdate,
   onLastShotTimesUpdate,
+  onGameOver,
 }: GameLogicProps) {
   const lastTickRef = useRef<number>(0);
   const tanksRef = useRef<Tank[]>(tanks);
@@ -119,56 +121,80 @@ export function useGameLogic({
       const tank = bulletResult.updatedTanks[i];
       const originalTank = currentTanks[i];
       
-      // If tank lost a life, respawn it at a random position
+      // If tank lost a life, start explosion animation
       if (tank.lives < originalTank.lives && tank.lives > 0) {
-        const spawn = generateRandomSpawnPosition(
-          mapData,
-          barriers,
-          bulletResult.updatedTanks,
-          suns,
-          i === 0 ? bulletResult.updatedTanks[1] : bulletResult.updatedTanks[0]
-            ? { x: bulletResult.updatedTanks[i === 0 ? 1 : 0].x, y: bulletResult.updatedTanks[i === 0 ? 1 : 0].y }
-            : undefined
-        );
         bulletResult.updatedTanks[i] = {
           ...tank,
-          x: spawn.x,
-          y: spawn.y,
-          angle: spawn.angle,
+          exploding: true,
+          explosionStartTime: tickTime,
         };
       }
-    }
-
-    // Check if game should restart (tank reached 0 lives)
-    let shouldRestart = false;
-    for (const tank of bulletResult.updatedTanks) {
-      if (tank.lives <= 0) {
-        shouldRestart = true;
-        break;
+      
+      // Handle respawn after explosion delay
+      if (tank.exploding && tank.explosionStartTime) {
+        const explosionDuration = 500; // 500ms explosion
+        const respawnDelay = 1000; // 1 second pause after explosion
+        const timeSinceExplosion = tickTime - tank.explosionStartTime;
+        
+        if (timeSinceExplosion >= explosionDuration + respawnDelay) {
+          // Time to respawn - start respawn animation
+          const spawn = generateRandomSpawnPosition(
+            mapData,
+            barriers,
+            bulletResult.updatedTanks,
+            suns,
+            i === 0 ? bulletResult.updatedTanks[1] : bulletResult.updatedTanks[0]
+              ? { x: bulletResult.updatedTanks[i === 0 ? 1 : 0].x, y: bulletResult.updatedTanks[i === 0 ? 1 : 0].y }
+              : undefined
+          );
+          bulletResult.updatedTanks[i] = {
+            ...tank,
+            x: spawn.x,
+            y: spawn.y,
+            angle: spawn.angle,
+            exploding: false,
+            respawning: true,
+            respawnStartTime: tickTime,
+            respawnTargetX: spawn.x,
+            respawnTargetY: spawn.y,
+            respawnTargetAngle: spawn.angle,
+          };
+        }
+      }
+      
+      // Handle respawn animation
+      if (tank.respawning && tank.respawnStartTime) {
+        const respawnDuration = 300; // 300ms respawn animation
+        const timeSinceRespawn = tickTime - tank.respawnStartTime;
+        
+        if (timeSinceRespawn >= respawnDuration) {
+          // Respawn complete
+          bulletResult.updatedTanks[i] = {
+            ...tank,
+            respawning: false,
+          };
+        }
       }
     }
 
-    if (shouldRestart) {
-      // Reset game immediately with new random spawn positions
-      const blueSpawn = generateRandomSpawnPosition(mapData, barriers, [], suns);
-      const redSpawn = generateRandomSpawnPosition(mapData, barriers, [], suns, blueSpawn);
-      
-      bulletResult.updatedTanks[0] = {
-        x: blueSpawn.x,
-        y: blueSpawn.y,
-        angle: blueSpawn.angle,
-        lives: GAME_CONFIG.tank.lives,
-        color: 'blue',
-      };
-      bulletResult.updatedTanks[1] = {
-        x: redSpawn.x,
-        y: redSpawn.y,
-        angle: redSpawn.angle,
-        lives: GAME_CONFIG.tank.lives,
-        color: 'red',
-      };
-      // Clear bullets on restart
-      bulletResult.updatedBullets.length = 0;
+    // Check if game is over (tank reached 0 lives)
+    let gameOverWinner: 'blue' | 'red' | null = null;
+    for (let i = 0; i < bulletResult.updatedTanks.length; i++) {
+      const tank = bulletResult.updatedTanks[i];
+      if (tank.lives <= 0 && !tank.exploding) {
+        // Start explosion for dead tank
+        bulletResult.updatedTanks[i] = {
+          ...tank,
+          exploding: true,
+          explosionStartTime: tickTime,
+        };
+        // Determine winner
+        gameOverWinner = i === 0 ? 'red' : 'blue';
+      }
+    }
+    
+    if (gameOverWinner) {
+      onGameOver(gameOverWinner);
     }
 
     onTanksUpdate(bulletResult.updatedTanks);
@@ -184,6 +210,7 @@ export function useGameLogic({
     onTanksUpdate,
     onBulletsUpdate,
     onLastShotTimesUpdate,
+    onGameOver,
   ]);
 
   return { gameTick };
