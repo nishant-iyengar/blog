@@ -4,6 +4,9 @@ interface UseGameInputOptions {
   gameOver?: boolean;
 }
 
+// Pre-compute game keys as Set for O(1) lookup instead of O(n) array.includes()
+const GAME_KEYS_SET = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'w', 'a', 's', 'd', 'q', 'p']);
+
 export function useGameInput(options?: UseGameInputOptions) {
   const keysRef = useRef<Set<string>>(new Set());
   const [isPaused, setIsPaused] = useState(false);
@@ -41,9 +44,8 @@ export function useGameInput(options?: UseGameInputOptions) {
         }
       }
       
-      const gameKeys = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'w', 'a', 's', 'd', 'q', 'p'];
-      
-      if (gameKeys.includes(key)) {
+      // Use Set for O(1) lookup instead of O(n) array.includes()
+      if (GAME_KEYS_SET.has(key)) {
         e.preventDefault(); // Prevent default browser behavior (scrolling, etc.) - prevents the "ding" sound
         e.stopPropagation(); // Stop event from bubbling
         
@@ -85,9 +87,8 @@ export function useGameInput(options?: UseGameInputOptions) {
         }
       }
       
-      const gameKeys = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'w', 'a', 's', 'd', 'q', 'p'];
-      
-      if (gameKeys.includes(key)) {
+      // Use Set for O(1) lookup instead of O(n) array.includes()
+      if (GAME_KEYS_SET.has(key)) {
         e.preventDefault(); // Prevent default browser behavior
         e.stopPropagation(); // Stop event from bubbling
         

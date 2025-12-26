@@ -2,6 +2,9 @@ import type { Bullet, Tank, Sun, Barrier } from '@/app/games/tank-trouble/types'
 import type { Threat } from './types';
 import { predictBulletPath } from './prediction';
 import { TANK_SIZE, TANK_COLLISION_SIZE } from '@/app/games/tank-trouble/config';
+import { getTankCenter } from '@/app/games/tank-trouble/utils/tank-utils';
+import { distance, angleToPoint, radToDeg } from '@/app/games/tank-trouble/utils/math';
+import { COLLISION_SIZE_BUFFER, HIGH_THREAT_DISTANCE_MULTIPLIER } from '@/app/games/tank-trouble/constants/game-constants';
 
 /**
  * Assess threats from incoming bullets
@@ -39,23 +42,21 @@ export function assessThreats(
     let closestTime = 0;
     let collisionPoint = { x: bullet.x, y: bullet.y };
 
-    // Calculate tank collision box
-    const tankCollisionOffset = (TANK_SIZE - TANK_COLLISION_SIZE) / 2;
-    const tankCenterX = tank.x + TANK_SIZE / 2;
-    const tankCenterY = tank.y + TANK_SIZE / 2;
+    // Calculate tank center once (reused for all points)
+    const tankCenter = getTankCenter(tank);
+    const hitThreshold = TANK_COLLISION_SIZE + COLLISION_SIZE_BUFFER;
 
+    // Early exit optimization: if we find a collision, break immediately
     for (const point of path.points) {
       // Distance from bullet to tank center
-      const dx = point.x - tankCenterX;
-      const dy = point.y - tankCenterY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = distance(point.x, point.y, tankCenter.x, tankCenter.y);
 
       // Check if bullet would hit tank (within collision size)
-      if (dist < TANK_COLLISION_SIZE + 5) {
+      if (dist < hitThreshold) {
         closestDistance = dist;
         closestTime = point.time;
         collisionPoint = { x: point.x, y: point.y };
-        break;
+        break; // Early exit when collision detected
       }
 
       if (dist < closestDistance) {
@@ -66,12 +67,13 @@ export function assessThreats(
     }
 
     // Calculate threat level based on distance and time
-    if (closestDistance < TANK_COLLISION_SIZE * 3) {
+    const threatDistanceThreshold = TANK_COLLISION_SIZE * HIGH_THREAT_DISTANCE_MULTIPLIER;
+    if (closestDistance < threatDistanceThreshold) {
       // High threat if very close
       const timeFactor = Math.max(0, 1 - closestTime / maxPredictionTime);
       const distanceFactor = Math.max(
         0,
-        1 - closestDistance / (TANK_COLLISION_SIZE * 3)
+        1 - closestDistance / threatDistanceThreshold
       );
       const threatLevel = (timeFactor + distanceFactor) / 2;
 
@@ -119,14 +121,12 @@ export function isPositionSafe(
       16
     );
 
-    // Check if any point gets too close
+    // Check if any point gets too close (early exit optimization)
+    const safeDistance = TANK_COLLISION_SIZE + safeMargin;
     for (const point of path.points) {
-      const dx = point.x - x;
-      const dy = point.y - y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < TANK_COLLISION_SIZE + safeMargin) {
-        return false;
+      const dist = distance(point.x, point.y, x, y);
+      if (dist < safeDistance) {
+        return false; // Early exit when unsafe position found
       }
     }
   }
@@ -156,19 +156,15 @@ export function findEscapeDirection(
   }
 
   // Calculate direction away from threat
-  const tankCenterX = tank.x + TANK_SIZE / 2;
-  const tankCenterY = tank.y + TANK_SIZE / 2;
+  const tankCenter = getTankCenter(tank);
+  const dist = distance(tankCenter.x, tankCenter.y, urgentThreat.collisionPoint.x, urgentThreat.collisionPoint.y);
 
-  const dx = tankCenterX - urgentThreat.collisionPoint.x;
-  const dy = tankCenterY - urgentThreat.collisionPoint.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
-  if (distance < 1) {
+  if (dist < 1) {
     // Too close, pick random direction
     return { angle: (tank.angle + 90) % 360, urgency: 1 };
   }
 
-  const escapeAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const escapeAngle = angleToPoint(urgentThreat.collisionPoint, tankCenter);
 
   return {
     angle: escapeAngle,

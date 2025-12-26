@@ -9,6 +9,8 @@
 import type { Tank, Bullet } from '@/app/games/tank-trouble/types';
 import type { AIDecision } from './types';
 import { TANK_SIZE } from '@/app/games/tank-trouble/config';
+import { distance } from '@/app/games/tank-trouble/utils/math';
+import { getTankCenter } from '@/app/games/tank-trouble/utils/tank-utils';
 
 export interface PreviousState {
   aiTank: Tank;
@@ -134,18 +136,19 @@ export function calculateReward(
   // 6. Shot accuracy (reward for shots that get close to enemy)
   if (action.shouldShoot) {
     // Find bullets that were just created (within last 100ms)
-    const recentBullets = current.bullets.filter(
-      b => b.owner === current.aiTank.color &&
-      current.tickTime - b.createdAt < 100
-    );
-
-    for (const bullet of recentBullets) {
-      const closestApproach = getClosestBulletApproach(bullet, current.enemyTank);
-      // Reward inversely proportional to closest approach
-      // Max reward if bullet gets within 20 pixels
-      const accuracyReward = Math.max(0, 5 * (1 - closestApproach / 50));
-      totalReward += accuracyReward;
-      breakdown.shotAccuracy = (breakdown.shotAccuracy || 0) + accuracyReward;
+    // Use single pass instead of filter for better performance
+    const RECENT_BULLET_THRESHOLD_MS = 100;
+    const aiBullets = current.bullets.filter(b => b.owner === current.aiTank.color);
+    
+    for (const bullet of aiBullets) {
+      if (current.tickTime - bullet.createdAt < RECENT_BULLET_THRESHOLD_MS) {
+        const closestApproach = getClosestBulletApproach(bullet, current.enemyTank);
+        // Reward inversely proportional to closest approach
+        // Max reward if bullet gets within 20 pixels
+        const accuracyReward = Math.max(0, 5 * (1 - closestApproach / 50));
+        totalReward += accuracyReward;
+        breakdown.shotAccuracy = (breakdown.shotAccuracy || 0) + accuracyReward;
+      }
     }
   }
 
@@ -162,8 +165,9 @@ export function calculateReward(
   }
 
   // 8. Movement reward (encourage active movement, penalize staying still)
-  const moved = getDistance(previous.aiTank, current.aiTank) > 0.1;
+  // Cache distance calculation to avoid redundant sqrt operations
   const movementDistance = getDistance(previous.aiTank, current.aiTank);
+  const moved = movementDistance > 0.1;
   
   if (moved) {
     // Reward proportional to distance moved (encourage significant movement)
@@ -179,8 +183,10 @@ export function calculateReward(
   }
 
   // 9. Stalemate detection (both tanks in similar positions, not making progress)
+  // Cache distance calculations to avoid redundant sqrt operations
   const tankDistance = getDistance(current.aiTank, current.enemyTank);
-  const distanceChange = Math.abs(tankDistance - getDistance(previous.aiTank, previous.enemyTank));
+  const prevTankDistance = getDistance(previous.aiTank, previous.enemyTank);
+  const distanceChange = Math.abs(tankDistance - prevTankDistance);
   
   // Check if both tanks are in a stalemate situation
   // Stalemate: tanks aren't changing relative positions much, and AI isn't moving much
@@ -208,16 +214,23 @@ export function calculateReward(
   // 11. Position diversity reward (encourage exploring different positions)
   // Track if tank has been in similar position recently (if history available)
   if (previous.aiPositionHistory && previous.aiPositionHistory.length > 0) {
-    const recentPositions = previous.aiPositionHistory.slice(-10); // Last 10 positions
+    const POSITION_REPEAT_THRESHOLD = 30; // Pixels - within this distance counts as repeat
+    const POSITION_HISTORY_SIZE = 10; // Check last N positions
+    
+    // Only check recent positions (avoid full array slice if history is large)
+    const startIdx = Math.max(0, previous.aiPositionHistory.length - POSITION_HISTORY_SIZE);
     const currentPos = { x: current.aiTank.x, y: current.aiTank.y };
     
-    // Check if current position is similar to recent positions
-    const isRepeatingPosition = recentPositions.some(pos => {
-      const dist = Math.sqrt(
-        Math.pow(currentPos.x - pos.x, 2) + Math.pow(currentPos.y - pos.y, 2)
-      );
-      return dist < 30; // Within 30 pixels of a recent position
-    });
+    // Check if current position is similar to recent positions (early exit optimization)
+    let isRepeatingPosition = false;
+    for (let i = startIdx; i < previous.aiPositionHistory.length; i++) {
+      const pos = previous.aiPositionHistory[i];
+      const dist = distance(currentPos.x, currentPos.y, pos.x, pos.y);
+      if (dist < POSITION_REPEAT_THRESHOLD) {
+        isRepeatingPosition = true;
+        break; // Early exit when repeat found
+      }
+    }
     
     if (!isRepeatingPosition && moved) {
       // Reward for moving to a new area
@@ -281,49 +294,74 @@ export function calculateReward(
 
 /**
  * Get Euclidean distance between two tanks
+ * Uses utility function for consistency
  */
 function getDistance(tank1: Tank, tank2: Tank): number {
-  const dx = tank2.x - tank1.x;
-  const dy = tank2.y - tank1.y;
-  return Math.sqrt(dx * dx + dy * dy);
+  return distance(tank1.x, tank1.y, tank2.x, tank2.y);
 }
 
 /**
  * Check if AI successfully dodged a bullet
  * 
  * Returns reward if a bullet that was close to AI is now gone or far away
+ * Optimized to use Map for O(1) lookups instead of O(n) searches
  */
 function checkDodgedBullet(previous: PreviousState, current: CurrentState): number {
+  const THREAT_DISTANCE = 50; // Distance threshold for threatening bullets
+  const BULLET_MATCH_DISTANCE = 10; // Distance for matching bullets between states
+  
   // Find bullets that were threatening AI in previous state
-  const threateningBullets = previous.bullets.filter(bullet => {
+  const threateningBullets: Bullet[] = [];
+  for (const bullet of previous.bullets) {
     if (bullet.owner === previous.aiTank.color || bullet.exploding) {
-      return false; // Ignore own bullets and exploding bullets
+      continue; // Ignore own bullets and exploding bullets
+    }
+    
+    const dist = getDistanceToTank(bullet, previous.aiTank);
+    if (dist < THREAT_DISTANCE) {
+      threateningBullets.push(bullet);
+    }
+  }
+
+  // Create a Map of current bullets by owner for faster lookup
+  // Key: owner, Value: array of bullets from that owner
+  const currentBulletsByOwner = new Map<'blue' | 'red', Bullet[]>();
+  for (const bullet of current.bullets) {
+    if (!bullet.exploding) {
+      const bullets = currentBulletsByOwner.get(bullet.owner) || [];
+      bullets.push(bullet);
+      currentBulletsByOwner.set(bullet.owner, bullets);
+    }
+  }
+
+  // Check if any threatening bullets are now gone or far away
+  let dodgedCount = 0;
+  const aiTankCenter = getTankCenter(current.aiTank);
+  
+  for (const prevBullet of threateningBullets) {
+    const ownerBullets = currentBulletsByOwner.get(prevBullet.owner) || [];
+    
+    // Check if a similar bullet still exists (matching by position)
+    let stillThreatening = false;
+    for (const currBullet of ownerBullets) {
+      const dist = distance(currBullet.x, currBullet.y, prevBullet.x, prevBullet.y);
+      if (dist < BULLET_MATCH_DISTANCE) {
+        stillThreatening = true;
+        break;
+      }
     }
 
-    const distance = getDistanceToTank(bullet, previous.aiTank);
-    return distance < 50; // Was within 50 pixels
-  });
-
-  // Check if any of these bullets are now gone or far away
-  let dodgedCount = 0;
-  for (const prevBullet of threateningBullets) {
-    const stillThreatening = current.bullets.some(currBullet => {
-      // Match bullets by position and owner (simple heuristic)
-      const distance = Math.sqrt(
-        Math.pow(currBullet.x - prevBullet.x, 2) +
-        Math.pow(currBullet.y - prevBullet.y, 2)
-      );
-      return distance < 10 && currBullet.owner === prevBullet.owner;
-    });
-
     if (!stillThreatening) {
-      // Bullet is gone or moved away
-      const currentDistance = current.bullets
-        .filter(b => b.owner === prevBullet.owner)
-        .map(b => getDistanceToTank(b, current.aiTank))
-        .reduce((min, d) => Math.min(min, d), Infinity);
+      // Bullet is gone - check if closest bullet from same owner is now far away
+      let minDistance = Infinity;
+      for (const currBullet of ownerBullets) {
+        const dist = distance(currBullet.x, currBullet.y, aiTankCenter.x, aiTankCenter.y);
+        if (dist < minDistance) {
+          minDistance = dist;
+        }
+      }
       
-      if (currentDistance > 50) {
+      if (minDistance > THREAT_DISTANCE) {
         dodgedCount++;
       }
     }
@@ -334,13 +372,11 @@ function checkDodgedBullet(previous: PreviousState, current: CurrentState): numb
 
 /**
  * Get distance from bullet to tank center
+ * Uses utility functions for consistency and performance
  */
 function getDistanceToTank(bullet: Bullet, tank: Tank): number {
-  const tankCenterX = tank.x + TANK_SIZE / 2;
-  const tankCenterY = tank.y + TANK_SIZE / 2;
-  const dx = bullet.x - tankCenterX;
-  const dy = bullet.y - tankCenterY;
-  return Math.sqrt(dx * dx + dy * dy);
+  const tankCenter = getTankCenter(tank);
+  return distance(bullet.x, bullet.y, tankCenter.x, tankCenter.y);
 }
 
 /**

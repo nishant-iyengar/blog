@@ -154,10 +154,28 @@ export function GameCanvas({
       if (tank.lives <= 0 || tank.x === undefined || tank.y === undefined) continue;
 
       ctx.save();
+      
+      // Check if tank is invincible (recently respawned)
+      // Use Date.now() for visual feedback (rendering doesn't need precise tick time)
+      const isInvincible = tank.invincibleUntil !== undefined && Date.now() < tank.invincibleUntil;
+      
+      // Draw golden circle for invincibility (before tank rotation so it stays centered)
+      if (isInvincible) {
+        const tankCenterX = tank.x + TANK_SIZE / 2;
+        const tankCenterY = tank.y + TANK_SIZE / 2;
+        const circleRadius = TANK_SIZE / 2 + 3; // Slightly larger than tank
+        
+        ctx.beginPath();
+        ctx.arc(tankCenterX, tankCenterY, circleRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#FFD700'; // Golden color
+        ctx.lineWidth = 2 / scale;
+        ctx.stroke();
+      }
+      
       ctx.translate(tank.x + TANK_SIZE / 2, tank.y + TANK_SIZE / 2);
       ctx.rotate((tank.angle * Math.PI) / 180);
       ctx.translate(-TANK_SIZE / 2, -TANK_SIZE / 2);
-
+      
       // Draw tank image
       const tankImage = tank.color === 'blue' ? tankImages.blue : tankImages.red;
       if (tankImage) {
@@ -250,11 +268,7 @@ export function GameCanvas({
       }
     }
 
-    // Draw UI
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = `${GAME_CONFIG.visual.uiTextSize}px Inter`;
-    ctx.fillText(`Blue: ${tanks[0]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY);
-    ctx.fillText(`Red: ${tanks[1]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY + 12);
+    // Draw UI (lives counter removed from bottom-left)
     
     // Draw instructions in top-right corner
     ctx.textAlign = 'right';
@@ -291,20 +305,7 @@ export function GameCanvas({
       ctx.textAlign = 'left'; // Reset alignment
     }
     
-    // DEBUG: Visual debugging overlay - show tank positions as text
-    if (process.env.NODE_ENV === 'development') {
-      ctx.fillStyle = '#FFFF00';
-      ctx.font = '8px monospace';
-      ctx.textAlign = 'left';
-      validTanks.forEach((tank, idx) => {
-        const debugText = `${tank.color.toUpperCase()}: (${Math.round(tank.x)}, ${Math.round(tank.y)})`;
-        ctx.fillText(debugText, 5, height - 20 + idx * 10);
-      });
-      if (tanks.length !== 2) {
-        ctx.fillStyle = '#FF0000';
-        ctx.fillText(`WARNING: ${tanks.length} tanks (expected 2)`, 5, height - 5);
-      }
-    }
+    // Debug text removed
   }, [width, height, tanks, bullets, barriers, suns, isPaused, tankImages, gameOverWinner]);
 
   // Calculate display size: internal resolution is 2x for crisp rendering, then apply scale

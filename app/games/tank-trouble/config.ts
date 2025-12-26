@@ -49,6 +49,7 @@ export const GAME_CONFIG = {
 // Derived constants (calculated from config)
 export const TANK_SIZE = GAME_CONFIG.tank.size;
 export const TANK_COLLISION_SIZE = GAME_CONFIG.tank.collisionSize;
+export const TANK_HALF_SIZE = TANK_SIZE / 2; // Commonly used value, compute once
 export const TANK_SPEED = GAME_CONFIG.tank.speed;
 export const BULLET_SPEED = TANK_SPEED * GAME_CONFIG.bullet.speedMultiplier;
 export const ROTATION_SPEED = GAME_CONFIG.tank.rotationSpeed;

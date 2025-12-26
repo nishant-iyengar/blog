@@ -45,6 +45,7 @@ export interface Tank {
   respawnTargetX?: number; // target x position for respawn
   respawnTargetY?: number; // target y position for respawn
   respawnTargetAngle?: number; // target angle for respawn
+  invincibleUntil?: number; // timestamp when invincibility expires (ms)
 }
 
 export interface SpawnPosition {

@@ -9,8 +9,12 @@ import type { UpdateTankResult, UpdateTankParams } from '@/app/games/tank-troubl
 import type { AIConfig, AIContext, AIDecision } from './types';
 import { makeAIDecision } from './controller';
 import { DEFAULT_AI_CONFIG } from './config';
-import { TANK_SPEED, ROTATION_SPEED, TANK_SIZE, BULLET_SPEED, MAX_BULLETS_PER_TANK, GAME_CONFIG } from '@/app/games/tank-trouble/config';
+import { TANK_SPEED, ROTATION_SPEED, MAX_BULLETS_PER_TANK, GAME_CONFIG } from '@/app/games/tank-trouble/config';
 import { canMoveTo } from '@/app/games/tank-trouble/utils/collision';
+import { createBullet } from '@/app/games/tank-trouble/utils/bullet-creation';
+import { clampTankPosition } from '@/app/games/tank-trouble/utils/tank-utils';
+import { degToRad } from '@/app/games/tank-trouble/utils/math';
+import { countBulletsByOwner } from '@/app/games/tank-trouble/utils/bullet-optimization';
 import type { RLTrainingManager } from './rl-training-manager';
 
 /**
@@ -86,7 +90,7 @@ export function updateAITank(
 
   // Handle movement
   if (decision.moveDirection !== 0) {
-    const rad = (newAngle * Math.PI) / 180;
+    const rad = degToRad(newAngle);
     const speed = decision.moveDirection > 0 ? TANK_SPEED : -TANK_SPEED * 0.7; // Backward is slower
     const dx = Math.cos(rad) * speed;
     const dy = Math.sin(rad) * speed;
@@ -104,38 +108,25 @@ export function updateAITank(
     decision.shouldShoot &&
     tickTime - lastShotTime > GAME_CONFIG.game.shootingCooldown
   ) {
-    const bulletCount = bullets.filter((b) => b.owner === tank.color && !b.exploding).length;
+    const bulletCounts = countBulletsByOwner(bullets);
+    const bulletCount = bulletCounts.get(tank.color) || 0;
     if (bulletCount < MAX_BULLETS_PER_TANK) {
       const shootAngle = decision.shootAngle ?? newAngle;
-      const rad = (shootAngle * Math.PI) / 180;
-      const bulletX =
-        newX +
-        TANK_SIZE / 2 +
-        Math.cos(rad) * (TANK_SIZE / 2 + GAME_CONFIG.tank.spawnOffset);
-      const bulletY =
-        newY +
-        TANK_SIZE / 2 +
-        Math.sin(rad) * (TANK_SIZE / 2 + GAME_CONFIG.tank.spawnOffset);
-
-      newBullets.push({
-        x: bulletX,
-        y: bulletY,
-        angle: shootAngle,
-        speed: BULLET_SPEED,
-        owner: tank.color,
-        createdAt: tickTime,
-        vx: Math.cos(rad) * BULLET_SPEED,
-        vy: Math.sin(rad) * BULLET_SPEED,
-      });
+      const bullet = createBullet(
+        { ...tank, x: newX, y: newY, angle: shootAngle },
+        shootAngle,
+        tickTime,
+        tank.color
+      );
+      newBullets.push(bullet);
       newLastShotTime = tickTime;
     }
   }
 
   // Clamp position
-  const TANK_COLLISION_SIZE = GAME_CONFIG.tank.collisionSize;
-  const collisionOffset = (TANK_SIZE - TANK_COLLISION_SIZE) / 2;
-  newX = Math.max(-collisionOffset, Math.min(newX, mapWidth - TANK_SIZE + collisionOffset));
-  newY = Math.max(-collisionOffset, Math.min(newY, mapHeight - TANK_SIZE + collisionOffset));
+  const clamped = clampTankPosition(newX, newY, mapWidth, mapHeight);
+  newX = clamped.x;
+  newY = clamped.y;
 
   return {
     updatedTank: { ...tank, x: newX, y: newY, angle: newAngle },

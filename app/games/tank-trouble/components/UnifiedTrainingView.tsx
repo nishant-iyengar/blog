@@ -99,7 +99,6 @@ interface GameInstance {
   episodeLength: number;
   episodeStartTime: number;
   gameType: 'ai-vs-ai' | 'person-vs-ai';
-  isActive: boolean;
   episodeNumber: number; // Current episode number for this game instance
 }
 
@@ -192,7 +191,6 @@ export function UnifiedTrainingView() {
         episodeLength: 0,
         episodeStartTime: Date.now(),
         gameType: 'ai-vs-ai' as const,
-        isActive: false, // Games don't run until training starts
         episodeNumber: i + 1, // Start at ID + 1 (Game 1, Game 2, Game 3, Game 4)
       };
     });
@@ -209,6 +207,9 @@ export function UnifiedTrainingView() {
     // TODO: Implement headless mode later - this will allow faster training by skipping rendering
     // headless: false,
   });
+
+  // All games are always active (assume all 4 games are always running)
+  const activeGamesCount = MAX_GAMES;
 
   // Sync gameStats.totalGames with training episode count (completed games)
   useEffect(() => {
@@ -306,7 +307,7 @@ export function UnifiedTrainingView() {
       lastShotTimes: instance.lastShotTimes,
       gameMode: instance.gameType === 'person-vs-ai' ? 'person-vs-ai' : 'ai',
       gameId: `game-${instance.id}`,
-      isPaused: !instance.isActive || !training.isTraining || (instance.id === userPlayingGameId && gameInput.isPaused),
+      isPaused: !training.isTraining || (instance.id === userPlayingGameId && gameInput.isPaused),
       speedMultiplier: instance.gameType === 'ai-vs-ai' ? AI_VS_AI_SPEED_MULTIPLIER : 1,
       episodeStartTime: instance.episodeStartTime,
       keysRef: getKeysRef(instance.id), // getKeysRef returns stable refs, safe to call here
@@ -375,7 +376,6 @@ export function UnifiedTrainingView() {
               episodeReward: 0,
               episodeLength: 0,
               episodeStartTime: Date.now(),
-              isActive: training.isTraining,
               episodeNumber: newEpisodeNumber,
               // Preserve gameType so user can continue controlling if it was person-vs-ai
               // gameType is already preserved in the spread (...gi)
@@ -394,20 +394,7 @@ export function UnifiedTrainingView() {
     },
   });
 
-  // Handle training state changes
-  useEffect(() => {
-    if (training.isTraining) {
-      // Activate all games when training starts
-      setGameInstances((prev) =>
-        prev.map((gi) => ({ ...gi, isActive: true }))
-      );
-    } else {
-      // Deactivate all games when training stops
-      setGameInstances((prev) =>
-        prev.map((gi) => ({ ...gi, isActive: false }))
-      );
-    }
-  }, [training.isTraining]);
+  // Games are always active - no need to track isActive state
 
   // Run all game loops (only if training is active)
   useEffect(() => {
@@ -419,35 +406,33 @@ export function UnifiedTrainingView() {
     let lastFrameTime = performance.now();
     
     const gameLoop = (currentTime: number) => {
-      // Tick all active games
+      // Tick all games (all games are always active)
       gameInstances.forEach((instance, idx) => {
-        if (instance.isActive) {
-          const isAIVsAI = instance.gameType === 'ai-vs-ai';
-          const speedMultiplier = isAIVsAI ? AI_VS_AI_SPEED_MULTIPLIER : 1;
+        const isAIVsAI = instance.gameType === 'ai-vs-ai';
+        const speedMultiplier = isAIVsAI ? AI_VS_AI_SPEED_MULTIPLIER : 1;
+        
+        if (isAIVsAI && speedMultiplier > 1) {
+          // For AI vs AI games, run multiple ticks per frame
+          const elapsed = currentTime - lastFrameTime;
+          const targetFrameTime = 1000 / 72; // Target 72 FPS base
+          const ticksToRun = Math.max(1, Math.floor((elapsed / targetFrameTime) * speedMultiplier));
           
-          if (isAIVsAI && speedMultiplier > 1) {
-            // For AI vs AI games, run multiple ticks per frame
-            const elapsed = currentTime - lastFrameTime;
-            const targetFrameTime = 1000 / 72; // Target 72 FPS base
-            const ticksToRun = Math.max(1, Math.floor((elapsed / targetFrameTime) * speedMultiplier));
-            
-            for (let i = 0; i < ticksToRun; i++) {
-              gameLogic.gameTick({ skipIntervalCheck: i > 0, gameId: instance.id });
-            }
-          } else {
-            // Normal speed (one tick per frame)
-            gameLogic.gameTick({ gameId: instance.id });
+          for (let i = 0; i < ticksToRun; i++) {
+            gameLogic.gameTick({ skipIntervalCheck: i > 0, gameId: instance.id });
           }
-          
-          // Update episode length reactively
-          if (instance.episodeStartTime) {
-            const elapsed = (Date.now() - instance.episodeStartTime) / 1000;
-            const newEpisodeLength = Math.floor(elapsed * 72);
-            if (instance.episodeLength !== newEpisodeLength) {
-              setGameInstances((prev) =>
-                prev.map((gi) => (gi.id === instance.id ? { ...gi, episodeLength: newEpisodeLength } : gi))
-              );
-            }
+        } else {
+          // Normal speed (one tick per frame)
+          gameLogic.gameTick({ gameId: instance.id });
+        }
+        
+        // Update episode length reactively
+        if (instance.episodeStartTime) {
+          const elapsed = (Date.now() - instance.episodeStartTime) / 1000;
+          const newEpisodeLength = Math.floor(elapsed * 72);
+          if (instance.episodeLength !== newEpisodeLength) {
+            setGameInstances((prev) =>
+              prev.map((gi) => (gi.id === instance.id ? { ...gi, episodeLength: newEpisodeLength } : gi))
+            );
           }
         }
       });
@@ -493,6 +478,15 @@ export function UnifiedTrainingView() {
   useEffect(() => {
     loadSavedModels();
   }, [loadSavedModels]);
+
+  // Start training automatically on mount (only once when manager becomes available)
+  const hasStartedTrainingRef = useRef(false);
+  useEffect(() => {
+    if (!hasStartedTrainingRef.current && !training.isTraining && training.manager) {
+      hasStartedTrainingRef.current = true;
+      training.startTraining();
+    }
+  }, [training.isTraining, training.manager]);
 
   // Refresh models when training saves
   useEffect(() => {
@@ -553,7 +547,7 @@ export function UnifiedTrainingView() {
       rlModelManager.setModel(extendedModel);
       
       // Always load the model into the training manager's agent
-      // This allows training to continue from the selected model when training starts
+      // This allows training to continue from the selected model
       if (training.manager) {
         // Extract path without indexeddb:// prefix for loadModel (it adds the prefix)
         const cleanPath = modelPath.replace('indexeddb://', '');
@@ -561,7 +555,7 @@ export function UnifiedTrainingView() {
         console.log('Model loaded into training manager for continued training');
       }
       
-      alert('Model loaded successfully! Training will continue from this model when you start training.');
+      alert('Model loaded successfully! Training will continue from this model.');
     } catch (error) {
       console.error('Failed to load model:', error);
       
@@ -649,40 +643,12 @@ export function UnifiedTrainingView() {
             <div className="flex items-center gap-4 flex-wrap">
               {/* Training Controls */}
               <div className="flex items-center gap-2">
-                {!training.isTraining ? (
-                  <button
-                    onClick={async () => {
-                      if (selectedModel && training.manager) {
-                        try {
-                          // Extract path without indexeddb:// prefix for loadModel (it adds the prefix)
-                          const cleanPath = selectedModel.replace('indexeddb://', '');
-                          await training.manager.loadModel(cleanPath);
-                        } catch (error) {
-                          // Silently fail - model loading is optional
-                        }
-                      }
-                      training.startTraining();
-                    }}
-                    style={{ backgroundColor: '#bbf7d0' }}
-                    className="px-4 py-2 bg-green-200 text-green-700 rounded hover:bg-green-300 font-medium"
-                  >
-                    Start Training
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => training.stopTraining()}
-                    style={{ backgroundColor: '#fecaca' }}
-                    className="px-4 py-2 bg-red-200 text-red-700 rounded hover:bg-red-300 font-medium"
-                  >
-                    Stop Training
-                  </button>
-                )}
                 <button
                   onClick={async () => {
                     try {
                       // Check if training manager is initialized
                       if (!training.manager) {
-                        alert('Training manager not initialized. Please wait for initialization or start training first.');
+                        alert('Training manager not initialized. Please wait for initialization.');
                         return;
                       }
                       
@@ -808,7 +774,7 @@ export function UnifiedTrainingView() {
               <div>
                 <div className="text-sm text-gray-600">Active Games</div>
                 <div className="text-2xl font-bold text-purple-600">
-                  {gameInstances.filter((gi) => gi.isActive).length}
+                  {activeGamesCount}
                 </div>
               </div>
             </div>
@@ -886,7 +852,7 @@ export function UnifiedTrainingView() {
                         </span>
                       </div>
                       <div className="text-xs text-gray-500 italic mt-0.5">
-                        Total reward across all {gameInstances.filter(gi => gi.isActive).length} active games (positive = good, negative = poor performance, but still valid training data)
+                        Total reward across all {activeGamesCount} active games (positive = good, negative = poor performance, but still valid training data)
                       </div>
                     </div>
                   <div>
@@ -899,7 +865,7 @@ export function UnifiedTrainingView() {
                       </span>
                     </div>
                     <div className="text-xs text-gray-500 italic mt-0.5">
-                      Total steps across all {gameInstances.filter(gi => gi.isActive).length} active games (updates every 5 seconds)
+                      Total steps across all {activeGamesCount} active games (updates every 5 seconds)
                     </div>
                   </div>
                   </div>
@@ -955,8 +921,8 @@ export function UnifiedTrainingView() {
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Status:</span>
-                      <span className={`font-semibold ${instance.isActive ? 'text-green-600' : 'text-gray-400'}`}>
-                        {instance.isActive ? 'Active' : 'Paused'}
+                      <span className={`font-semibold ${training.isTraining ? 'text-green-600' : 'text-gray-400'}`}>
+                        {training.isTraining ? 'Active' : 'Paused'}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1065,9 +1031,9 @@ export function UnifiedTrainingView() {
                       </button>
                     )}
                   </div>
-                  {!instance.isActive && (
+                  {!training.isTraining && (
                     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 rounded">
-                      <div className="text-white text-sm">Waiting for training to start...</div>
+                      <div className="text-white text-sm">Training paused</div>
                     </div>
                   )}
                   {/* Properly scaled canvas container - fixed size to prevent layout shifts */}
@@ -1085,7 +1051,7 @@ export function UnifiedTrainingView() {
                       bullets={instance.bullets}
                       barriers={barriers}
                       suns={suns}
-                      isPaused={!instance.isActive || !training.isTraining}
+                      isPaused={!training.isTraining}
                       tankImages={tankImages}
                       gameOverWinner={instance.gameOverWinner}
                       scale={scale}

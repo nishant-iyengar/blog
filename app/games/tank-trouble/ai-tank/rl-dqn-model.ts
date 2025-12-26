@@ -754,6 +754,15 @@ export class DQNAgent {
     
     try {
     const newQNetwork = await tf.loadLayersModel(path);
+    
+    // CRITICAL: Models loaded from IndexedDB are NOT compiled.
+    // TensorFlow.js requires models to be compiled before they can be saved.
+    // Compile the loaded model with the same optimizer and loss function.
+    newQNetwork.compile({
+      optimizer: tf.train.adam(this.config.learningRate),
+      loss: 'meanSquaredError',
+    });
+    
     const newTargetNetwork = this.createNetwork();
     
     // Dispose old networks only after new ones are loaded

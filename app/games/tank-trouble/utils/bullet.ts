@@ -17,6 +17,9 @@ import {
   TANK_COLLISION_SIZE,
   TANK_SIZE,
 } from '@/app/games/tank-trouble/config';
+import { BULLET_MIN_VELOCITY } from '@/app/games/tank-trouble/constants/game-constants';
+import { distance, radToDeg } from '@/app/games/tank-trouble/utils/math';
+import { detectBulletCollisions, groupBulletsByOwner } from '@/app/games/tank-trouble/utils/bullet-optimization';
 
 interface UpdateBulletsParams {
   bullets: Bullet[];
@@ -40,43 +43,28 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
   const { bullets, tickTime, mapWidth, mapHeight, barriers, suns, tanks } = params;
   
   const updatedBullets: Bullet[] = [];
-  const bulletsToRemove = new Set<number>();
   const updatedTanks = [...tanks];
   const bulletCollisionSize = GAME_CONFIG.bullet.collisionSize;
 
-  // First pass: check for bullet-bullet collisions
-  // Use continuous collision detection to prevent bullets passing through each other
-  for (let i = 0; i < bullets.length; i++) {
-    if (bulletsToRemove.has(i)) continue;
-    const bullet = bullets[i];
-    if (bullet.exploding) continue; // Skip exploding bullets
-    
-    // Skip bullets from the same owner (they shouldn't collide with each other)
-    // Only check collisions between bullets from different owners
-    for (let j = i + 1; j < bullets.length; j++) {
-      if (bulletsToRemove.has(j)) continue;
-      const otherBullet = bullets[j];
-      if (otherBullet.exploding) continue; // Skip exploding bullets
-      
-      // Only check collisions between bullets from different owners
-      if (bullet.owner === otherBullet.owner) {
-        continue;
-      }
-      
-      // Check current distance
-      const dx = bullet.x - otherBullet.x;
-      const dy = bullet.y - otherBullet.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Check if bullets are actually colliding (within collision size)
-      if (distance < GAME_CONFIG.bullet.collisionSize) {
-        // Both bullets are removed immediately (no animation)
-        bulletsToRemove.add(i);
-        bulletsToRemove.add(j);
-        break; // Both bullets removed, no need to check more collisions
-      }
-    }
-  }
+  // First pass: optimized bullet-bullet collision detection
+  // Groups bullets by owner first, reducing O(n²) to O(blue_count * red_count)
+  const bulletGroups = groupBulletsByOwner(bullets);
+  const bulletsToRemove = detectBulletCollisions(bullets, bulletGroups);
+
+  // Pre-compute sun sources once (avoid recreating array for every bullet)
+  const sunSources: Vector2D[] = suns.map((sun) => ({
+    x: sun.x,
+    y: sun.y,
+  }));
+
+  // Pre-compute gravity config (avoid recreating object for every bullet)
+  const gravityConfig = {
+    gravitationalConstant: G,
+    sourceMass: mSun,
+    influenceRadius: SUN_INFLUENCE_RADIUS,
+    minDistance: GAME_CONFIG.sun.minDistance,
+    maxAcceleration: BULLET_SPEED * 0.3, // Max 30% of bullet speed per frame
+  };
 
   // Second pass: update remaining bullets
   for (let i = 0; i < bullets.length; i++) {
@@ -100,33 +88,23 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
       // Keep bullet but mark as fading (will be handled in rendering)
     }
 
-    // Apply gravitational force from suns
-    const sunSources: Vector2D[] = suns.map((sun) => ({
-      x: sun.x,
-      y: sun.y,
-    }));
-
+    // Apply gravitational force from suns (using pre-computed sources and config)
     const gravityAcceleration = applyGravityFromSources(
       { x: bullet.x, y: bullet.y },
       sunSources,
-      {
-        gravitationalConstant: G,
-        sourceMass: mSun,
-        influenceRadius: SUN_INFLUENCE_RADIUS,
-        minDistance: GAME_CONFIG.sun.minDistance,
-        maxAcceleration: BULLET_SPEED * 0.3, // Max 30% of bullet speed per frame
-      }
+      gravityConfig
     );
 
     // Update velocity with gravitational acceleration
     let newVx = bullet.vx + gravityAcceleration.x;
     let newVy = bullet.vy + gravityAcceleration.y;
 
-    // Ensure minimum velocity to prevent bullets from getting stuck
-    const minVelocity = 0.5;
-    const velocity = ensureMinimumVelocity({ x: newVx, y: newVy }, minVelocity);
+    // Ensure minimum velocity to prevent bullets from getting stuck (very small minimum to prevent division by zero)
+    const velocity = ensureMinimumVelocity({ x: newVx, y: newVy }, BULLET_MIN_VELOCITY);
     newVx = velocity.x;
     newVy = velocity.y;
+
+    // Allow gravity to slow bullets naturally - no minimum speed enforcement
 
     // Update position using velocity
     let newX = bullet.x + newVx;
@@ -150,6 +128,7 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     newVy = boundaryBounce.newVelocity.y;
 
     // Check collision with barriers - bounce off barriers
+    // Early exit when collision found - barriers array is typically small so O(n) is acceptable
     for (const barrier of barriers) {
       const barrierRect: Rectangle = {
         x: barrier.x,
@@ -171,7 +150,7 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
         newY = barrierBounce.newPosition.y;
         newVx = barrierBounce.newVelocity.x;
         newVy = barrierBounce.newVelocity.y;
-        break;
+        break; // Only one barrier collision per tick
       }
     }
 
@@ -180,6 +159,13 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     for (let j = 0; j < updatedTanks.length; j++) {
       const tank = updatedTanks[j];
       if (tank.lives > 0) {
+        // Check if tank is invincible (recently respawned)
+        const isInvincible = tank.invincibleUntil !== undefined && tickTime < tank.invincibleUntil;
+        if (isInvincible) {
+          // Tank is invincible, skip collision check
+          continue;
+        }
+        
         const bulletLeft = newX - bulletCollisionSize / 2;
         const bulletTop = newY - bulletCollisionSize / 2;
         const bulletRight = newX + bulletCollisionSize / 2;
@@ -218,7 +204,7 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     }
 
     // Update angle based on new velocity
-    const newAngle = (Math.atan2(newVy, newVx) * 180) / Math.PI;
+    const newAngle = radToDeg(Math.atan2(newVy, newVx));
     
     updatedBullets.push({
       ...bullet,

@@ -68,8 +68,18 @@ export function useMultiGameLogic({
   
   // Store latest gameInstances in ref for access in callback (avoid stale closure)
   const gameInstancesRef = useRef(gameInstances);
+  
+  // Create a Map for O(1) lookup by gameId instead of O(n) filter
+  const gameInstancesMapRef = useRef<Map<number, GameInstance>>(new Map());
+  
   useEffect(() => {
     gameInstancesRef.current = gameInstances;
+    // Update Map for efficient lookups
+    const map = new Map<number, GameInstance>();
+    gameInstances.forEach(instance => {
+      map.set(instance.id, instance);
+    });
+    gameInstancesMapRef.current = map;
   }, [gameInstances]);
   
   // Initialize refs for all games
@@ -104,7 +114,11 @@ export function useMultiGameLogic({
     // Use ref to get latest game instances (avoid stale closure)
     const currentGameInstances = gameInstancesRef.current;
     const gamesToTick = options?.gameId !== undefined 
-      ? currentGameInstances.filter(gi => gi.id === options.gameId)
+      ? (() => {
+          // Use Map for O(1) lookup instead of O(n) filter
+          const instance = gameInstancesMapRef.current.get(options.gameId);
+          return instance ? [instance] : [];
+        })()
       : currentGameInstances;
 
     gamesToTick.forEach((instance) => {
@@ -140,7 +154,6 @@ export function useMultiGameLogic({
       // Update Player 1 (Blue)
       if (currentTanks[0]?.lives > 0) {
         let result;
-        const blueTankBefore = { ...currentTanks[0] };
         
         if (instance.gameMode === 'person-vs-ai') {
           result = updatePlayer1Tank({
@@ -198,48 +211,25 @@ export function useMultiGameLogic({
 
       // Update Player 2 (Red)
       if (currentTanks[1]?.lives > 0) {
-        let result;
-        const redTankBefore = { ...currentTanks[1] };
-        
-        if (instance.gameMode === 'ai' || instance.gameMode === 'person-vs-ai') {
-          result = updateAITank(
-            {
-              tank: currentTanks[1],
-              tankIndex: 1,
-              keys,
-              tickTime,
-              lastShotTime: instance.lastShotTimes.red,
-              bullets: currentBullets,
-              mapWidth: mapData.width,
-              mapHeight: mapData.height,
-              barriers,
-              suns,
-              allTanks: currentTanks,
-            },
-            aiConfig,
-            trainingManager,
-            instance.gameId
-          );
-        } else {
-          result = updateAITank(
-            {
-              tank: currentTanks[1],
-              tankIndex: 1,
-              keys,
-              tickTime,
-              lastShotTime: instance.lastShotTimes.red,
-              bullets: currentBullets,
-              mapWidth: mapData.width,
-              mapHeight: mapData.height,
-              barriers,
-              suns,
-              allTanks: currentTanks,
-            },
-            aiConfig,
-            trainingManager,
-            instance.gameId
-          );
-        }
+        // Always use AI for red tank (simplified logic - removed duplicate branch)
+        const result = updateAITank(
+          {
+            tank: currentTanks[1],
+            tankIndex: 1,
+            keys,
+            tickTime,
+            lastShotTime: instance.lastShotTimes.red,
+            bullets: currentBullets,
+            mapWidth: mapData.width,
+            mapHeight: mapData.height,
+            barriers,
+            suns,
+            allTanks: currentTanks,
+          },
+          aiConfig,
+          trainingManager,
+          instance.gameId
+        );
         
         currentTanks[1] = result.updatedTank;
         currentBullets.push(...result.newBullets);
@@ -286,6 +276,7 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
+            invincibleUntil: undefined,
           };
           bulletResult.updatedTanks[1] = {
             ...redTank,
@@ -296,6 +287,7 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
+            invincibleUntil: undefined,
           };
           
           onTanksUpdate(instance.id, bulletResult.updatedTanks);
@@ -324,6 +316,7 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
+            invincibleUntil: undefined,
           };
           bulletResult.updatedTanks[1] = {
             ...redTankAfterBullets,
@@ -334,6 +327,7 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
+            invincibleUntil: undefined,
           };
           
           onTanksUpdate(instance.id, bulletResult.updatedTanks);
@@ -364,6 +358,8 @@ export function useMultiGameLogic({
               : undefined
           );
           
+          // Set invincibility for 2 seconds after respawn
+          const INVINCIBILITY_DURATION_MS = 2000; // 2 seconds
           bulletResult.updatedTanks[i] = {
             ...tank,
             x: spawn.x,
@@ -376,6 +372,7 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
+            invincibleUntil: tickTime + INVINCIBILITY_DURATION_MS,
           };
         }
         
@@ -389,6 +386,15 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
+            // Don't clear invincibleUntil here - it may still be active
+          };
+        }
+        
+        // Clear invincibility if it has expired
+        if (tank.invincibleUntil !== undefined && tickTime >= tank.invincibleUntil) {
+          bulletResult.updatedTanks[i] = {
+            ...tank,
+            invincibleUntil: undefined,
           };
         }
       }

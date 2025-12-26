@@ -1,6 +1,7 @@
 import { checkRectCollision } from '@/lib/physics';
 import type { Barrier, Tank, Sun } from '@/app/games/tank-trouble/types';
 import { TANK_SIZE, TANK_COLLISION_SIZE } from '@/app/games/tank-trouble/config';
+import { COLLISION_EPSILON } from '@/app/games/tank-trouble/constants/game-constants';
 
 /**
  * Check if a tank position is valid (not colliding with barriers or out of bounds)
@@ -22,10 +23,9 @@ export function isValidTankPosition(
   const collisionY = y + collisionOffset;
   
   // Check boundaries - allow tanks to be exactly at walls (with small epsilon for floating point precision)
-  const epsilon = 0.001;
-  if (collisionX < -epsilon || collisionY < -epsilon || 
-      collisionX + TANK_COLLISION_SIZE > mapWidth + epsilon || 
-      collisionY + TANK_COLLISION_SIZE > mapHeight + epsilon) {
+  if (collisionX < -COLLISION_EPSILON || collisionY < -COLLISION_EPSILON || 
+      collisionX + TANK_COLLISION_SIZE > mapWidth + COLLISION_EPSILON || 
+      collisionY + TANK_COLLISION_SIZE > mapHeight + COLLISION_EPSILON) {
     return false;
   }
 

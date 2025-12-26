@@ -4,10 +4,14 @@ import { assessThreats, isPositionSafe, findEscapeDirection } from './threat-ass
 import { calculateOptimalShotAngle } from './sun-calculations';
 import { calculateOptimalPosition, findSafeDodgePosition } from './navigation';
 import { predictTankPosition } from './prediction';
-import { TANK_SPEED, ROTATION_SPEED, TANK_SIZE, BULLET_SPEED, MAX_BULLETS_PER_TANK, GAME_CONFIG } from '@/app/games/tank-trouble/config';
+import { TANK_SPEED, ROTATION_SPEED, TANK_SIZE, MAX_BULLETS_PER_TANK } from '@/app/games/tank-trouble/config';
 import { canMoveTo } from '@/app/games/tank-trouble/utils/collision';
 import { rlModelManager } from './rl-model';
 import { extractObservation } from './rl-observation';
+import { URGENT_THREAT_THRESHOLD, ENEMY_PREDICTION_TIME_MS, MOVE_FORWARD_ANGLE_TOLERANCE, MOVE_BACKWARD_ANGLE_TOLERANCE } from '@/app/games/tank-trouble/constants/game-constants';
+import { getTankCenter } from '@/app/games/tank-trouble/utils/tank-utils';
+import { normalizeAngleDifference, angleToPoint } from '@/app/games/tank-trouble/utils/math';
+import { countBulletsByOwner } from '@/app/games/tank-trouble/utils/bullet-optimization';
 
 /**
  * Main AI controller - decides what actions the AI tank should take
@@ -82,7 +86,7 @@ function makeRuleBasedDecision(context: AIContext): AIDecision {
 
   // More aggressive: only dodge if threat is truly imminent (very high threat level)
   // This encourages movement toward enemy even when under moderate threat
-  const hasUrgentThreat = threats.length > 0 && threats[0].threatLevel > 0.85; // Increased from 0.6 to 0.85
+  const hasUrgentThreat = threats.length > 0 && threats[0].threatLevel > URGENT_THREAT_THRESHOLD;
 
   // Decision making: only dodge for truly urgent threats, otherwise always attack
   if (hasUrgentThreat) {
@@ -137,17 +141,13 @@ function handleDodge(
   let angleDelta = 0;
   let moveDirection = 0;
 
-  if (dodgePos) {
+    if (dodgePos) {
     // Calculate angle to dodge position
-    const dx = dodgePos.x - (aiTank.x + TANK_SIZE / 2);
-    const dy = dodgePos.y - (aiTank.y + TANK_SIZE / 2);
-    const targetAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const aiCenter = getTankCenter(aiTank);
+    const targetAngle = angleToPoint(aiCenter, dodgePos);
 
     // Calculate angle difference
-    let angleDiff = targetAngle - aiTank.angle;
-    // Normalize to -180 to 180
-    while (angleDiff > 180) angleDiff -= 360;
-    while (angleDiff < -180) angleDiff += 360;
+    let angleDiff = normalizeAngleDifference(targetAngle - aiTank.angle);
 
     // Rotate toward target
     if (Math.abs(angleDiff) > ROTATION_SPEED) {
@@ -160,10 +160,7 @@ function handleDodge(
     moveDirection = 1;
   } else {
     // Can't dodge to position, just rotate away from threat
-    const dx = escape.angle - aiTank.angle;
-    let angleDiff = dx;
-    while (angleDiff > 180) angleDiff -= 360;
-    while (angleDiff < -180) angleDiff += 360;
+    let angleDiff = normalizeAngleDifference(escape.angle - aiTank.angle);
 
     if (Math.abs(angleDiff) > ROTATION_SPEED) {
       angleDelta = angleDiff > 0 ? ROTATION_SPEED : -ROTATION_SPEED;
@@ -201,8 +198,7 @@ function handleAttack(context: AIContext): AIDecision {
   } = context;
 
   // Predict enemy position
-  const predictionTime = 500; // Predict 500ms ahead
-  const predictedEnemyPos = predictTankPosition(enemyTank, predictionTime, TANK_SPEED);
+  const predictedEnemyPos = predictTankPosition(enemyTank, ENEMY_PREDICTION_TIME_MS, TANK_SPEED);
 
   // Calculate optimal shot
   const shot = calculateOptimalShotAngle(
@@ -233,9 +229,7 @@ function handleAttack(context: AIContext): AIDecision {
   // Always rotate toward enemy/shot angle (prioritize shooting over positioning)
   const targetAngle = shot.angle; // Always prioritize shooting angle
 
-  let angleDiff = targetAngle - aiTank.angle;
-  while (angleDiff > 180) angleDiff -= 360;
-  while (angleDiff < -180) angleDiff += 360;
+  let angleDiff = normalizeAngleDifference(targetAngle - aiTank.angle);
 
   if (Math.abs(angleDiff) > ROTATION_SPEED) {
     angleDelta = angleDiff > 0 ? ROTATION_SPEED : -ROTATION_SPEED;
@@ -245,22 +239,16 @@ function handleAttack(context: AIContext): AIDecision {
 
   // Always move toward enemy (aggressive behavior - move forward whenever possible)
   // Calculate angle directly to enemy
-  const enemyCenterX = enemyTank.x + 12;
-  const enemyCenterY = enemyTank.y + 12;
-  const aiCenterX = aiTank.x + 12;
-  const aiCenterY = aiTank.y + 12;
-  const moveAngle = (Math.atan2(
-    enemyCenterY - aiCenterY,
-    enemyCenterX - aiCenterX
-  ) * 180) / Math.PI;
+  const aiCenter = getTankCenter(aiTank);
+  const enemyCenter = getTankCenter(enemyTank);
+  const moveAngle = angleToPoint(aiCenter, enemyCenter);
 
-  const moveAngleDiff = moveAngle - aiTank.angle;
-  const normalizedMoveDiff = ((moveAngleDiff + 180) % 360) - 180;
+  const normalizedMoveDiff = normalizeAngleDifference(moveAngle - aiTank.angle);
 
   // Always move forward toward enemy if facing roughly the right direction (wider tolerance)
-  if (Math.abs(normalizedMoveDiff) < 60) { // Increased from 45 to 60 for more movement
+  if (Math.abs(normalizedMoveDiff) < MOVE_FORWARD_ANGLE_TOLERANCE) {
     moveDirection = 1; // Forward
-  } else if (Math.abs(normalizedMoveDiff) > 120) { // Increased from 135 to 120
+  } else if (Math.abs(normalizedMoveDiff) > MOVE_BACKWARD_ANGLE_TOLERANCE) {
     moveDirection = -1; // Backward (to quickly reorient)
   } else {
     // Even if not perfectly aligned, still move forward if somewhat close
@@ -271,8 +259,9 @@ function handleAttack(context: AIContext): AIDecision {
   let shouldShoot = false;
   let shootAngle: number | undefined;
 
-  // Check if we have bullets available
-  const bulletCount = bullets.filter((b) => b.owner === aiTank.color && !b.exploding).length;
+  // Check if we have bullets available (use optimized counting)
+  const bulletCounts = countBulletsByOwner(bullets);
+  const bulletCount = bulletCounts.get(aiTank.color) || 0;
   const canShoot = bulletCount < MAX_BULLETS_PER_TANK;
 
   // More aggressive shooting: lower confidence threshold, wider angle tolerance

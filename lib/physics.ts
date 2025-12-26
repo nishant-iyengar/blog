@@ -215,18 +215,21 @@ export function calculateGravity(
 ): Vector2D {
   const dx = source.x - position.x;
   const dy = source.y - position.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
+  const distanceSquared = dx * dx + dy * dy;
 
-  // Only apply gravity if within influence radius
-  if (distance >= config.influenceRadius || distance === 0) {
+  // Early exit: check squared distance first (avoid sqrt if outside influence)
+  const influenceRadiusSquared = config.influenceRadius * config.influenceRadius;
+  if (distanceSquared >= influenceRadiusSquared || distanceSquared === 0) {
     return { x: 0, y: 0 };
   }
 
+  // Only calculate sqrt when we know we're within influence radius
+  const distance = Math.sqrt(distanceSquared);
   const effectiveDistance = Math.max(distance, config.minDistance);
-  const distanceSquared = effectiveDistance * effectiveDistance;
+  const effectiveDistanceSquared = effectiveDistance * effectiveDistance;
 
   // Calculate gravitational acceleration
-  let gravitationalAcceleration = (config.gravitationalConstant * config.sourceMass) / distanceSquared;
+  let gravitationalAcceleration = (config.gravitationalConstant * config.sourceMass) / effectiveDistanceSquared;
 
   // Cap maximum acceleration if specified
   if (config.maxAcceleration !== undefined) {
@@ -245,6 +248,7 @@ export function calculateGravity(
 
 /**
  * Apply gravity from multiple sources
+ * Optimized: early exit if no sources are within influence radius
  */
 export function applyGravityFromSources(
   position: Vector2D,
@@ -259,8 +263,21 @@ export function applyGravityFromSources(
 ): Vector2D {
   let totalAccelerationX = 0;
   let totalAccelerationY = 0;
+  
+  // Pre-compute squared influence radius for faster distance comparison
+  const influenceRadiusSquared = config.influenceRadius * config.influenceRadius;
 
   for (const source of sources) {
+    // Quick squared distance check before calling calculateGravity
+    const dx = source.x - position.x;
+    const dy = source.y - position.y;
+    const distanceSquared = dx * dx + dy * dy;
+    
+    // Skip this source if it's outside influence radius (calculateGravity also checks, but this avoids function call overhead)
+    if (distanceSquared >= influenceRadiusSquared || distanceSquared === 0) {
+      continue;
+    }
+    
     const gravity = calculateGravity(position, source, config);
     totalAccelerationX += gravity.x;
     totalAccelerationY += gravity.y;

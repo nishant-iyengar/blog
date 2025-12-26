@@ -161,6 +161,7 @@ function normalizeAngleDifference(angleDiff: number): number {
 
 /**
  * Get distances to nearest barriers in 8 directions
+ * Optimized with pre-computed barrier bounds
  */
 function getBarrierDistances(
   x: number,
@@ -180,10 +181,19 @@ function getBarrierDistances(
     { dx: 1, dy: -1 },  // Up-right
   ];
 
+  // Pre-compute barrier bounds once instead of repeatedly accessing properties
+  const barrierBounds = barriers.map(barrier => ({
+    left: barrier.x,
+    right: barrier.x + barrier.width,
+    top: barrier.y,
+    bottom: barrier.y + barrier.height,
+  }));
+
+  const step = 5; // Check every 5 pixels
+  const maxDistance = Math.max(mapWidth, mapHeight);
+
   return directions.map(dir => {
     let distance = 0;
-    const step = 5; // Check every 5 pixels
-    const maxDistance = Math.max(mapWidth, mapHeight);
 
     while (distance < maxDistance) {
       const testX = x + dir.dx * distance;
@@ -194,13 +204,20 @@ function getBarrierDistances(
         break;
       }
 
-      // Check if hitting a barrier
-      const hitBarrier = barriers.some(barrier =>
-        testX >= barrier.x &&
-        testX <= barrier.x + barrier.width &&
-        testY >= barrier.y &&
-        testY <= barrier.y + barrier.height
-      );
+      // Use pre-computed bounds for faster barrier check
+      // Early exit when barrier found
+      let hitBarrier = false;
+      for (const bounds of barrierBounds) {
+        if (
+          testX >= bounds.left &&
+          testX <= bounds.right &&
+          testY >= bounds.top &&
+          testY <= bounds.bottom
+        ) {
+          hitBarrier = true;
+          break;
+        }
+      }
 
       if (hitBarrier) {
         break;

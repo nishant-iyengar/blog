@@ -1,6 +1,8 @@
 import type { Tank, SpawnPosition, TankTroubleMapData, Sun } from '@/app/games/tank-trouble/types';
 import { GAME_CONFIG, TANK_SIZE } from '@/app/games/tank-trouble/config';
 import { isValidTankPosition } from '@/app/games/tank-trouble/utils/collision';
+import { MAX_SPAWN_ATTEMPTS, SPAWN_PADDING, MIN_SPAWN_DISTANCE } from '@/app/games/tank-trouble/constants/game-constants';
+import { distancePoints } from '@/app/games/tank-trouble/utils/math';
 
 /**
  * Generate a random valid spawn position for a tank
@@ -21,8 +23,8 @@ export function generateRandomSpawnPosition(
     };
   }
   
-  const maxAttempts = 100;
-  const padding = 8; // Minimum distance from edges (16 * 0.5 = 8)
+  const maxAttempts = MAX_SPAWN_ATTEMPTS;
+  const padding = SPAWN_PADDING;
   
   // Validate map dimensions
   const mapWidth = mapData.width;
@@ -52,11 +54,8 @@ export function generateRandomSpawnPosition(
     
     // Check if position is too close to exclude position (if provided)
     if (excludePosition) {
-      const distance = Math.sqrt(
-        Math.pow(x - excludePosition.x, 2) + Math.pow(y - excludePosition.y, 2)
-      );
-      // Require at least 50 pixels distance from exclude position
-      if (distance < 50) {
+      const dist = distancePoints({ x, y }, excludePosition);
+      if (dist < MIN_SPAWN_DISTANCE) {
         continue;
       }
     }
@@ -86,10 +85,8 @@ export function generateRandomSpawnPosition(
     if (isValidTankPosition(spawnPoint.x, spawnPoint.y, mapData.width, mapData.height, barriers, tanks, suns)) {
       // Check exclude position if provided
       if (excludePosition) {
-        const distance = Math.sqrt(
-          Math.pow(spawnPoint.x - excludePosition.x, 2) + Math.pow(spawnPoint.y - excludePosition.y, 2)
-        );
-        if (distance < 50) {
+        const dist = distancePoints(spawnPoint, excludePosition);
+        if (dist < MIN_SPAWN_DISTANCE) {
           continue;
         }
       }

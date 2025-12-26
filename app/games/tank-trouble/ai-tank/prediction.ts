@@ -16,6 +16,7 @@ import {
   GAME_CONFIG,
   TICK_INTERVAL,
 } from '@/app/games/tank-trouble/config';
+import { BULLET_MIN_VELOCITY } from '@/app/games/tank-trouble/constants/game-constants';
 
 /**
  * Predict bullet trajectory accounting for sun gravity and collisions
@@ -38,27 +39,30 @@ export function predictBulletPath(
   const bulletCollisionSize = GAME_CONFIG.bullet.collisionSize;
   let isBlocked = false;
 
-  // Convert suns to vector sources
+  // Convert suns to vector sources (pre-compute once)
   const sunSources: Vector2D[] = suns.map((sun) => ({
     x: sun.x,
     y: sun.y,
   }));
 
+  // Pre-compute gravity config (avoid recreating object in loop)
+  const gravityConfig = {
+    gravitationalConstant: G,
+    sourceMass: mSun,
+    influenceRadius: SUN_INFLUENCE_RADIUS,
+    minDistance: GAME_CONFIG.sun.minDistance,
+    maxAcceleration: BULLET_SPEED * 0.3,
+  };
+
   // Store initial point
   points.push({ x: currentX, y: currentY, time: currentTime });
 
   while (currentTime < maxTime && !isBlocked) {
-    // Apply gravity
+    // Apply gravity (using pre-computed sources and config)
     const gravityAcceleration = applyGravityFromSources(
       { x: currentX, y: currentY },
       sunSources,
-      {
-        gravitationalConstant: G,
-        sourceMass: mSun,
-        influenceRadius: SUN_INFLUENCE_RADIUS,
-        minDistance: GAME_CONFIG.sun.minDistance,
-        maxAcceleration: BULLET_SPEED * 0.3,
-      }
+      gravityConfig
     );
 
     // Update velocity
@@ -66,8 +70,7 @@ export function predictBulletPath(
     let newVy = currentVy + gravityAcceleration.y;
 
     // Ensure minimum velocity
-    const minVelocity = 0.5;
-    const velocity = ensureMinimumVelocity({ x: newVx, y: newVy }, minVelocity);
+    const velocity = ensureMinimumVelocity({ x: newVx, y: newVy }, BULLET_MIN_VELOCITY);
     newVx = velocity.x;
     newVy = velocity.y;
 
@@ -134,7 +137,7 @@ export function predictBulletPath(
 
     // Stop if bullet is moving too slowly (stuck in sun)
     const speed = Math.sqrt(newVx * newVx + newVy * newVy);
-    if (speed < 0.5) {
+    if (speed < BULLET_MIN_VELOCITY) {
       isBlocked = true;
       break;
     }
