@@ -689,18 +689,17 @@ export function UnifiedTrainingView() {
                       // Check if model can be saved
                       if (!training.canSaveModel()) {
                         const bufferSize = training.getReplayBufferSize();
-                        const hasTrained = (training.stats?.loss ?? 0) > 0;
                         const hasEpisodes = (training.stats?.episode ?? 0) > 0;
                         
                         let message = 'Cannot save model yet. Requirements:\n';
                         if (bufferSize < 32) {
-                          message += `- Need at least 32 steps (current: ${bufferSize})\n`;
-                        }
-                        if (!hasTrained) {
-                          message += '- Model must be trained at least once (wait for training to occur)\n';
+                          message += `- Need at least 32 steps in replay buffer (current: ${bufferSize})\n`;
                         }
                         if (!hasEpisodes) {
                           message += '- Need at least one completed episode\n';
+                        }
+                        if (bufferSize >= 32 && hasEpisodes) {
+                          message += '- Need to wait for training to occur (training happens every 4 steps when buffer has 32+ steps)\n';
                         }
                         alert(message);
                         return;
@@ -773,7 +772,7 @@ export function UnifiedTrainingView() {
                       : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
                   }`}
                   title={(!training.manager || !training.canSaveModel()) 
-                    ? `Requirements: 32+ steps, model trained (loss > 0), and at least 1 episode completed`
+                    ? `Requirements: 32+ steps in replay buffer, at least 1 episode completed, and training must have occurred at least once`
                     : 'Save current model (creates new model, does not overwrite)'}
                 >
                   Save Model
@@ -787,7 +786,7 @@ export function UnifiedTrainingView() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-500 italic">
-              Saving a model requires: 32+ steps, model trained (loss &gt; 0), and at least 1 episode completed
+              Saving a model requires: 32+ steps in replay buffer, at least 1 episode completed, and training must have occurred at least once
             </div>
           </div>
 

@@ -418,18 +418,274 @@ export class DQNAgent {
       throw new Error('Network not initialized. Cannot save model.');
     }
     
+    // Verify the model is valid and not disposed
+    if (!this.areNetworksValid()) {
+      throw new Error('Network has been disposed. Cannot save model.');
+    }
+    
+    // Check if IndexedDB is available
+    if (typeof indexedDB === 'undefined') {
+      throw new Error('IndexedDB is not available in this browser. Cannot save model.');
+    }
+    
     try {
       console.log('DQNAgent: Saving model to', path);
-      await this.qNetwork.save(path);
-      console.log('DQNAgent: Model saved successfully to', path);
+      
+      // Verify path format - TensorFlow.js expects 'indexeddb://model-name'
+      // Common issue: extra slashes or special characters cause silent failures
+      if (!path.startsWith('indexeddb://')) {
+        throw new Error(`Invalid path format. Expected 'indexeddb://...', got: ${path}`);
+      }
+      
+      const cleanPath = path.replace('indexeddb://', '');
+      
+      // Validate clean path - TensorFlow.js object store names have restrictions
+      // They cannot contain certain characters and should be simple identifiers
+      if (cleanPath.includes('/') || cleanPath.includes('\\') || cleanPath.includes(' ')) {
+        throw new Error(`Invalid model name. Object store names cannot contain slashes or spaces. Got: ${cleanPath}`);
+      }
+      
+      if (cleanPath.length === 0) {
+        throw new Error('Invalid model name. Model name cannot be empty.');
+      }
+      
+      console.log('DQNAgent: Clean path for TensorFlow.js:', cleanPath);
+      console.log('DQNAgent: Full path:', path);
+      
+      // Check browser IndexedDB support and permissions
+      if (typeof indexedDB === 'undefined') {
+        throw new Error('IndexedDB is not available in this browser. Cannot save model.');
+      }
+      
+      // Check if we're in a context where IndexedDB might be restricted
+      // (e.g., Safari private browsing, iframe without permissions)
+      try {
+        const testDbName = '__tfjs_test_db__';
+        const testRequest = indexedDB.open(testDbName);
+        await new Promise<void>((resolve, reject) => {
+          testRequest.onsuccess = () => {
+            testRequest.result.close();
+            indexedDB.deleteDatabase(testDbName);
+            resolve();
+          };
+          testRequest.onerror = () => reject(new Error('IndexedDB open failed - may be restricted'));
+          testRequest.onblocked = () => reject(new Error('IndexedDB is blocked - may need user interaction'));
+        });
+        console.log('DQNAgent: IndexedDB access test passed');
+      } catch (testError) {
+        const error = testError instanceof Error ? testError : new Error(String(testError));
+        console.warn('DQNAgent: IndexedDB access test failed:', error.message);
+        throw new Error(`IndexedDB access restricted: ${error.message}. This may be due to browser privacy settings, private browsing mode, or iframe permissions.`);
+      }
+      
+      // Save the model - TensorFlow.js will create the object store automatically
+      // Note: TensorFlow.js save() returns a ModelArtifactsInfo object with modelTopology and weightData
+      let saveResult: any = null;
+      
+      // Before saving, check what databases exist
+      console.log('DQNAgent: Checking IndexedDB databases before save...');
+      if (indexedDB.databases) {
+        const databases = await indexedDB.databases();
+        console.log('DQNAgent: Existing IndexedDB databases:', databases.map(db => ({ name: db.name, version: db.version })));
+      }
+      
+      try {
+        console.log('DQNAgent: Calling model.save() with path:', path);
+        console.log('DQNAgent: Model type:', this.qNetwork.constructor.name);
+        console.log('DQNAgent: Model compiled:', !!this.qNetwork.optimizer);
+        console.log('DQNAgent: Model has weights:', this.qNetwork.getWeights().length > 0);
+        
+        // Check model state before saving
+        const weights = this.qNetwork.getWeights();
+        console.log('DQNAgent: Model has', weights.length, 'weight layers');
+        if (weights.length > 0) {
+          const firstWeightShape = weights[0].shape;
+          console.log('DQNAgent: First weight layer shape:', firstWeightShape);
+        }
+        
+        // Try saving - TensorFlow.js should create the object store
+        // Note: model.save() should work for LayersModel, but let's verify it's actually saving
+        // CRITICAL: TensorFlow.js save() can fail silently if:
+        // 1. Model isn't compiled (we check this above)
+        // 2. Path format is wrong (we validate this above)
+        // 3. IndexedDB permissions are restricted (browser issue)
+        // 4. Model hasn't been trained (weights are still initial values)
+        console.log('DQNAgent: About to call model.save()...');
+        
+        // Verify model is in a saveable state
+        if (!this.qNetwork.optimizer) {
+          throw new Error('Model is not compiled. Cannot save uncompiled model.');
+        }
+        
+        // Check if model has been trained (weights updated from initial values)
+        // TensorFlow.js may have issues saving models that haven't been trained
+        // We check stepCount to see if training has occurred
+        if (this.stepCount === 0) {
+          console.warn('DQNAgent: WARNING - Model has not been trained yet (stepCount = 0). Saving anyway, but this may cause issues.');
+        }
+        
+        // Try saving - wrap in additional error handling
+        try {
+          saveResult = await this.qNetwork.save(path);
+        } catch (saveError) {
+          // Re-throw with more context
+          const error = saveError instanceof Error ? saveError : new Error(String(saveError));
+          console.error('DQNAgent: TensorFlow.js save() threw an error:', error);
+          console.error('DQNAgent: Error details:', {
+            message: error.message,
+            stack: error.stack,
+            path: path,
+            modelCompiled: !!this.qNetwork.optimizer,
+          });
+          throw new Error(`TensorFlow.js save() failed: ${error.message}`);
+        }
+        
+        // Wait a brief moment for IndexedDB transaction to commit
+        // IndexedDB operations are asynchronous and may need time to complete
+        console.log('DQNAgent: Waiting for IndexedDB transaction to commit...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Check what databases exist after saving
+        console.log('DQNAgent: Checking IndexedDB databases after save...');
+        if (indexedDB.databases) {
+          try {
+            const databasesAfter = await indexedDB.databases();
+            console.log('DQNAgent: IndexedDB databases after save:', databasesAfter.map(db => ({ name: db.name, version: db.version })));
+            
+            // Look for TensorFlow.js database
+            const tfDb = databasesAfter.find(db => db.name === 'tensorflowjs_models' || (db.name && db.name.includes('tensorflow')));
+            if (tfDb && tfDb.name) {
+              console.log('DQNAgent: Found TensorFlow.js database:', tfDb.name);
+              // Try to inspect the database
+              const inspectRequest = indexedDB.open(tfDb.name);
+              inspectRequest.onsuccess = () => {
+                const db = inspectRequest.result;
+                console.log('DQNAgent: TensorFlow.js database object stores:', Array.from(db.objectStoreNames));
+                db.close();
+              };
+              inspectRequest.onerror = () => {
+                console.warn('DQNAgent: Could not inspect TensorFlow.js database');
+              };
+            } else {
+              console.warn('DQNAgent: WARNING - No TensorFlow.js database found after save!');
+            }
+          } catch (dbError) {
+            console.warn('DQNAgent: Could not list databases:', dbError);
+          }
+        }
+        
+        // Check if TensorFlow.js can list the model
+        // TensorFlow.js provides tf.io.listModels() to enumerate saved models
+        console.log('DQNAgent: Checking if TensorFlow.js can list the saved model...');
+        try {
+          const savedModels = await tf.io.listModels();
+          console.log('DQNAgent: TensorFlow.js reports', Object.keys(savedModels).length, 'saved models');
+          const modelKeys = Object.keys(savedModels);
+          console.log('DQNAgent: Saved model keys:', modelKeys);
+          
+          // Check if our model is in the list
+          const cleanPath = path.replace('indexeddb://', '');
+          const modelInList = modelKeys.some(key => key.includes(cleanPath) || key === path || key.endsWith(cleanPath));
+          console.log('DQNAgent: Model in TensorFlow.js list?', modelInList);
+          
+          if (!modelInList) {
+            console.warn('DQNAgent: WARNING - Model not found in TensorFlow.js list, but save() completed');
+            console.warn('DQNAgent: Expected path:', path);
+            console.warn('DQNAgent: Clean path:', cleanPath);
+          }
+        } catch (listError) {
+          console.warn('DQNAgent: Could not list models (this is okay):', listError);
+        }
+        
+        // Immediately try to load the model to verify it was saved
+        // This is a common pattern to catch silent failures
+        console.log('DQNAgent: Verifying save by attempting to load model...');
+        try {
+          const testLoad = await tf.loadLayersModel(path);
+          console.log('DQNAgent: SUCCESS - Model can be loaded immediately after save!');
+          // Dispose the test load - we don't need it
+          testLoad.dispose();
+        } catch (loadError) {
+          const error = loadError instanceof Error ? loadError : new Error(String(loadError));
+          console.error('DQNAgent: CRITICAL - Model save() completed but cannot be loaded!');
+          console.error('DQNAgent: Load error:', error.message);
+          console.error('DQNAgent: Load error stack:', error.stack);
+          
+          // Try to get more information about what TensorFlow.js sees
+          try {
+            const savedModels = await tf.io.listModels();
+            console.error('DQNAgent: Available models according to TensorFlow.js:', Object.keys(savedModels));
+          } catch (e) {
+            console.error('DQNAgent: Could not list models:', e);
+          }
+          
+          throw new Error(`Model save() completed but verification load failed: ${error.message}. This indicates the model was not actually saved to IndexedDB.`);
+        }
+        
+        console.log('DQNAgent: Model save() returned:', saveResult);
+        console.log('DQNAgent: Save result type:', typeof saveResult);
+        if (saveResult) {
+          console.log('DQNAgent: Save result keys:', Object.keys(saveResult));
+          console.log('DQNAgent: Save result values:', JSON.stringify(saveResult, null, 2));
+        } else {
+          console.warn('DQNAgent: WARNING - save() returned null/undefined');
+        }
+        
+        console.log('DQNAgent: Model save() call completed for', path);
+        
+        // After saving, check what databases exist now and debug what was created
+        if (indexedDB.databases) {
+          const databasesAfter = await indexedDB.databases();
+          console.log('DQNAgent: IndexedDB databases after save:', databasesAfter.map(db => ({ name: db.name, version: db.version })));
+          
+          // Debug: List all databases and their object stores
+          const { debugListAllIndexedDBDatabases } = await import('./rl-model-storage');
+          await debugListAllIndexedDBDatabases();
+        }
+      } catch (saveErr) {
+        const saveError = saveErr instanceof Error ? saveErr : new Error(String(saveErr));
+        console.error('DQNAgent: Error during model.save():', saveError);
+        console.error('DQNAgent: Error message:', saveError.message);
+        console.error('DQNAgent: Error stack:', saveError.stack);
+        throw saveError;
+      }
+      
+      // Wait longer for IndexedDB to sync (TensorFlow.js might be async)
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Verify the model was actually saved
-      const { modelExists } = await import('./rl-model-storage');
-      const exists = await modelExists(path);
+      const { modelExists, listAvailableModelPaths } = await import('./rl-model-storage');
+      
+      // First, check what's actually in the database
+      const availablePaths = await listAvailableModelPaths();
+      console.log('DQNAgent: Available paths in TensorFlow.js IndexedDB:', availablePaths);
+      console.log('DQNAgent: Looking for path:', cleanPath);
+      
+      // Try verification with retries (IndexedDB can be slow to sync)
+      let exists = false;
+      let retries = 0;
+      while (!exists && retries < 5) {
+        exists = await modelExists(path);
+        if (!exists && retries < 4) {
+          console.log(`DQNAgent: Verification attempt ${retries + 1}/5 failed, retrying...`);
+          // Re-check available paths in case they changed
+          const currentPaths = await listAvailableModelPaths();
+          console.log('DQNAgent: Current available paths:', currentPaths);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        retries++;
+      }
       
       if (!exists) {
-        console.warn('DQNAgent: Warning - Model save completed but verification failed. The model may not be accessible.');
-        console.warn('DQNAgent: This could be a timing issue. Try waiting a moment and checking again.');
+        // Final check of what's available
+        const finalPaths = await listAvailableModelPaths();
+        const errorMsg = `Model save() completed but weights were NOT saved to IndexedDB.\n` +
+          `Expected path: ${path}\n` +
+          `Clean path: ${cleanPath}\n` +
+          `Available paths: ${finalPaths.join(', ') || 'none'}\n` +
+          `This suggests TensorFlow.js save() failed silently or used a different path format.`;
+        console.error('DQNAgent: CRITICAL ERROR:', errorMsg);
+        throw new Error(errorMsg);
       } else {
         console.log('DQNAgent: Model verification successful - model exists in IndexedDB');
       }

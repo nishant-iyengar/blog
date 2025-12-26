@@ -10,6 +10,7 @@
  */
 
 import Dexie, { type Table } from 'dexie';
+import * as tf from '@tensorflow/tfjs';
 
 export interface SavedModel {
   name: string;
@@ -217,12 +218,43 @@ async function deleteMetadata(path: string): Promise<void> {
 /**
  * Check if a TensorFlow.js model exists in IndexedDB
  * 
- * This checks both that the object store exists and that it contains data.
- * TensorFlow.js stores models with the object store name matching the path (without indexeddb:// prefix).
+ * IMPORTANT: Uses TensorFlow.js's official API (tf.io.listModels()) instead of
+ * manually inspecting IndexedDB. This ensures we're checking models the way
+ * TensorFlow.js expects them to be stored.
  */
 export async function modelExists(modelPath: string): Promise<boolean> {
+  if (typeof window === 'undefined') {
+    console.log(`[modelExists] Window not available for path: ${modelPath}`);
+    return false;
+  }
+
+  try {
+    // Use TensorFlow.js's official API to check if model exists
+    const savedModels = await tf.io.listModels();
+    const modelKeys = Object.keys(savedModels);
+    
+    const exists = modelKeys.includes(modelPath);
+    console.log(`[modelExists] Model '${modelPath}' exists according to TensorFlow.js: ${exists}`);
+    
+    if (!exists) {
+      console.log(`[modelExists] Available models:`, modelKeys);
+    }
+    
+    return exists;
+  } catch (error) {
+    console.warn(`[modelExists] Error checking model existence with TensorFlow.js API:`, error);
+    // Fallback to manual IndexedDB inspection if TensorFlow.js API fails
+    return await modelExistsFallback(modelPath);
+  }
+}
+
+/**
+ * Fallback method: manually inspect IndexedDB
+ * Only used if TensorFlow.js API is unavailable
+ */
+async function modelExistsFallback(modelPath: string): Promise<boolean> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
-    console.log(`[modelExists] IndexedDB not available for path: ${modelPath}`);
+    console.log(`[modelExistsFallback] IndexedDB not available for path: ${modelPath}`);
     return false;
   }
 
@@ -237,7 +269,7 @@ export async function modelExists(modelPath: string): Promise<boolean> {
       
       // Check if object store exists
       if (!db.objectStoreNames.contains(cleanPath)) {
-        console.log(`[modelExists] Object store '${cleanPath}' does not exist in database`);
+        console.log(`[modelExistsFallback] Object store '${cleanPath}' does not exist in database`);
         db.close();
         resolve(false);
         return;
@@ -251,37 +283,37 @@ export async function modelExists(modelPath: string): Promise<boolean> {
         
         countRequest.onsuccess = () => {
           const hasData = countRequest.result > 0;
-          console.log(`[modelExists] Object store '${cleanPath}' has ${countRequest.result} entries, exists=${hasData}`);
+          console.log(`[modelExistsFallback] Object store '${cleanPath}' has ${countRequest.result} entries, exists=${hasData}`);
           db.close();
           resolve(hasData);
         };
         
         countRequest.onerror = (e) => {
-          console.warn(`[modelExists] Error counting entries in '${cleanPath}':`, e);
+          console.warn(`[modelExistsFallback] Error counting entries in '${cleanPath}':`, e);
           db.close();
           resolve(false);
         };
         
         transaction.onerror = (e) => {
-          console.warn(`[modelExists] Transaction error for '${cleanPath}':`, e);
+          console.warn(`[modelExistsFallback] Transaction error for '${cleanPath}':`, e);
           db.close();
           resolve(false);
         };
       } catch (e) {
-        console.warn(`[modelExists] Exception checking model existence for '${cleanPath}':`, e);
+        console.warn(`[modelExistsFallback] Exception checking model existence for '${cleanPath}':`, e);
         db.close();
         resolve(false);
       }
     };
     
     request.onerror = (e) => {
-      console.warn(`[modelExists] Error opening database '${dbName}':`, e);
+      console.warn(`[modelExistsFallback] Error opening database '${dbName}':`, e);
       resolve(false);
     };
     
     request.onupgradeneeded = () => {
       // Database doesn't exist yet or needs upgrade
-      console.log(`[modelExists] Database '${dbName}' needs upgrade, model doesn't exist yet`);
+      console.log(`[modelExistsFallback] Database '${dbName}' needs upgrade, model doesn't exist yet`);
       resolve(false);
     };
   });
@@ -289,9 +321,45 @@ export async function modelExists(modelPath: string): Promise<boolean> {
 
 /**
  * List all available model paths in TensorFlow.js database
- * Useful for debugging
+ * 
+ * IMPORTANT: Uses TensorFlow.js's official API (tf.io.listModels()) instead of
+ * manually inspecting IndexedDB. TensorFlow.js may store models in a different
+ * structure than we expect, so we should use their API.
  */
 export async function listAvailableModelPaths(): Promise<string[]> {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    // Use TensorFlow.js's official API to list models
+    // This is the correct way to get all saved models
+    const savedModels = await tf.io.listModels();
+    const modelKeys = Object.keys(savedModels);
+    
+    console.log(`[listAvailableModelPaths] TensorFlow.js reports ${modelKeys.length} saved models`);
+    console.log(`[listAvailableModelPaths] All model keys:`, modelKeys);
+    
+    // Filter to only IndexedDB models that match our naming pattern
+    const indexedDbModels = modelKeys.filter(key => 
+      key.startsWith('indexeddb://') && key.includes(MODEL_NAME_PREFIX)
+    );
+    
+    console.log(`[listAvailableModelPaths] Filtered IndexedDB models (starting with 'indexeddb://${MODEL_NAME_PREFIX}'):`, indexedDbModels);
+    
+    return indexedDbModels;
+  } catch (error) {
+    console.warn(`[listAvailableModelPaths] Error listing models with TensorFlow.js API:`, error);
+    // Fallback to manual IndexedDB inspection if TensorFlow.js API fails
+    return await listAvailableModelPathsFallback();
+  }
+}
+
+/**
+ * Fallback method: manually inspect IndexedDB
+ * Only used if TensorFlow.js API is unavailable
+ */
+async function listAvailableModelPathsFallback(): Promise<string[]> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
     return [];
   }
@@ -304,21 +372,76 @@ export async function listAvailableModelPaths(): Promise<string[]> {
     request.onsuccess = () => {
       const db = request.result;
       const objectStoreNames = Array.from(db.objectStoreNames);
+      console.log(`[listAvailableModelPathsFallback] Database '${dbName}' has ${objectStoreNames.length} object stores:`, objectStoreNames);
+      
       const modelPaths = objectStoreNames
         .filter(name => name.startsWith(MODEL_NAME_PREFIX))
         .map(name => `indexeddb://${name}`);
+      
+      // Also log all object stores (not just ones starting with MODEL_NAME_PREFIX)
+      if (objectStoreNames.length > 0) {
+        console.log(`[listAvailableModelPathsFallback] All object stores in '${dbName}':`, objectStoreNames);
+        console.log(`[listAvailableModelPathsFallback] Filtered model paths (starting with '${MODEL_NAME_PREFIX}'):`, modelPaths);
+      } else {
+        console.log(`[listAvailableModelPathsFallback] No object stores found in '${dbName}' database`);
+      }
+      
       db.close();
       resolve(modelPaths);
     };
     
-    request.onerror = () => {
+    request.onerror = (e) => {
+      console.warn(`[listAvailableModelPathsFallback] Error opening database '${dbName}':`, e);
       resolve([]);
     };
     
     request.onupgradeneeded = () => {
+      console.log(`[listAvailableModelPathsFallback] Database '${dbName}' needs upgrade - no models exist yet`);
       resolve([]);
     };
   });
+}
+
+/**
+ * Debug function to list ALL IndexedDB databases and their object stores
+ * Useful for understanding what TensorFlow.js actually creates
+ */
+export async function debugListAllIndexedDBDatabases(): Promise<void> {
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    console.log('[debugListAllIndexedDBDatabases] IndexedDB not available');
+    return;
+  }
+  
+  console.log('[debugListAllIndexedDBDatabases] Listing all IndexedDB databases...');
+  
+  if (indexedDB.databases) {
+    try {
+      const databases = await indexedDB.databases();
+      console.log(`[debugListAllIndexedDBDatabases] Found ${databases.length} databases:`, databases.map(db => ({ name: db.name, version: db.version })));
+      
+      // Open each database and list object stores
+      for (const dbInfo of databases) {
+        try {
+          const request = indexedDB.open(dbInfo.name);
+          request.onsuccess = () => {
+            const db = request.result;
+            const objectStores = Array.from(db.objectStoreNames);
+            console.log(`[debugListAllIndexedDBDatabases] Database '${dbInfo.name}' (v${db.version}) has ${objectStores.length} object stores:`, objectStores);
+            db.close();
+          };
+          request.onerror = () => {
+            console.warn(`[debugListAllIndexedDBDatabases] Could not open database '${dbInfo.name}'`);
+          };
+        } catch (e) {
+          console.warn(`[debugListAllIndexedDBDatabases] Error inspecting database '${dbInfo.name}':`, e);
+        }
+      }
+    } catch (e) {
+      console.warn('[debugListAllIndexedDBDatabases] Error getting database list:', e);
+    }
+  } else {
+    console.warn('[debugListAllIndexedDBDatabases] indexedDB.databases() not available in this browser');
+  }
 }
 
 /**
@@ -356,7 +479,7 @@ export async function listSavedModels(): Promise<SavedModel[]> {
           evalScore: m.evalScore,
         });
       } else {
-        console.warn(`[listSavedModels] Model ${m.path} has metadata but weights are missing`);
+        // Model metadata exists but weights are missing - will be cleaned up below
         orphanedModels.push(m.path);
       }
     }
@@ -364,14 +487,14 @@ export async function listSavedModels(): Promise<SavedModel[]> {
     console.log(`[listSavedModels] Found ${allModels.length} total models in metadata, ${validModels.length} valid, ${orphanedModels.length} orphaned`);
     
     // Clean up orphaned metadata entries (models with metadata but no weights)
+    // This can happen if IndexedDB was cleared but Dexie metadata remained, or if a save failed
     if (orphanedModels.length > 0) {
-      console.warn(`Found ${orphanedModels.length} orphaned model metadata entries (metadata exists but model weights are missing). Cleaning up...`);
+      console.log(`[listSavedModels] Cleaning up ${orphanedModels.length} orphaned metadata entries (model weights missing)`);
       for (const orphanedPath of orphanedModels) {
         try {
           await deleteMetadata(orphanedPath);
-          console.log(`Cleaned up orphaned metadata for: ${orphanedPath}`);
         } catch (error) {
-          console.warn(`Failed to clean up orphaned metadata for ${orphanedPath}:`, error);
+          // Silently handle cleanup errors - not critical
         }
       }
     }

@@ -47,6 +47,7 @@ export class RLTrainingManager {
   private isTraining: boolean = false;
   private currentEpisode: number = 0;
   private stepCount: number = 0;
+  private hasTrainedAtLeastOnce: boolean = false; // Track if training has occurred at least once
   // Per-game state tracking
   private gameStates: Map<string, { observation?: Observation; lastAction?: number; reward?: number }> = new Map();
   private activeGameEpisodes: Set<string> = new Set(); // Track which games have active episodes
@@ -221,6 +222,10 @@ export class RLTrainingManager {
       const batch = this.replayBuffer.sample(32); // Sample from ALL games' steps
       const loss = await this.agent.train(batch); // Train shared model
       this.stats.loss = loss;
+      
+      // Mark that training has occurred (even if loss is 0, training ran)
+      // This ensures we only save models that have actually been trained
+      this.hasTrainedAtLeastOnce = true;
 
       if (this.config.onTrainingUpdate) {
         this.config.onTrainingUpdate({
@@ -390,14 +395,19 @@ export class RLTrainingManager {
    * Check if model can be saved
    * Requirements:
    * 1. Replay buffer has enough steps (32+) for at least one training batch
-   * 2. Model has been trained at least once (loss > 0 indicates training occurred)
-   * 3. At least one episode has completed (to have meaningful averageReward)
+   * 2. At least one episode has completed (to have meaningful averageReward)
+   * 3. Training has actually occurred at least once (hasTrainedAtLeastOnce)
+   * 
+   * Note: We require hasTrainedAtLeastOnce instead of loss > 0 because:
+   * - Loss might be 0 even after training (if there was an error or loss extraction failed)
+   * - But if training ran, the model weights have been updated, making it worth saving
+   * - This ensures we only save models that have actually been trained, not just initialized
    */
   canSaveModel(): boolean {
     const hasEnoughData = this.replayBuffer.canSample(32);
-    const hasBeenTrained = this.stats.loss > 0; // Loss is 0 initially, > 0 after first training
     const hasCompletedEpisode = this.currentEpisode > 0; // Need at least one episode for meaningful stats
-    return hasEnoughData && hasBeenTrained && hasCompletedEpisode;
+    // Require that training has actually occurred (model weights have been updated)
+    return hasEnoughData && hasCompletedEpisode && this.hasTrainedAtLeastOnce;
   }
 
   /**
@@ -411,29 +421,35 @@ export class RLTrainingManager {
    * Save model
    */
   async saveModel(path: string, evalScore?: number, displayName?: string): Promise<void> {
+    // Ensure path has indexeddb:// prefix for IndexedDB storage
+    // If path already has the prefix, use it as-is; otherwise add it
+    const fullPath = path.startsWith('indexeddb://') ? path : `indexeddb://${path}`;
+    console.log('RLTrainingManager: Saving model to', fullPath);
+    
+    if (!this.agent) {
+      throw new Error('Agent not initialized. Cannot save model.');
+    }
+    
+    // CRITICAL: Save model weights FIRST and verify they were saved
+    // Only save metadata AFTER we confirm the weights are in IndexedDB
+    // This prevents orphaned metadata entries
     try {
-      // Ensure path has indexeddb:// prefix for IndexedDB storage
-      // If path already has the prefix, use it as-is; otherwise add it
-      const fullPath = path.startsWith('indexeddb://') ? path : `indexeddb://${path}`;
-      console.log('RLTrainingManager: Saving model to', fullPath);
-      
-      if (!this.agent) {
-        throw new Error('Agent not initialized. Cannot save model.');
-      }
-      
       await this.agent.save(fullPath);
-      console.log(`Model saved successfully to: ${fullPath}`);
-      
-      // Save metadata for easier model management
-      try {
-        await saveModelWithMetadata(fullPath, evalScore, displayName);
-      } catch (metaError) {
-        console.warn('Failed to save model metadata (model still saved):', metaError);
-        // Don't throw - metadata is optional
-      }
+      // agent.save() now includes verification - if it returns, weights are saved
+      console.log(`RLTrainingManager: Model weights verified in IndexedDB: ${fullPath}`);
     } catch (error) {
-      console.error('Error in saveModel:', error);
-      throw error; // Re-throw to let caller handle it
+      console.error('RLTrainingManager: Model weights save/verification failed:', error);
+      throw new Error(`Failed to save model weights: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    // Only save metadata if weights were successfully saved and verified
+    try {
+      await saveModelWithMetadata(fullPath, evalScore, displayName);
+      console.log(`RLTrainingManager: Metadata saved successfully for: ${fullPath}`);
+    } catch (metaError) {
+      // If metadata save fails, log but don't throw - weights are already saved
+      console.warn('RLTrainingManager: Failed to save model metadata (weights are saved):', metaError);
+      // Don't throw - metadata is optional, weights are the important part
     }
   }
 
