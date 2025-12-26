@@ -13,6 +13,7 @@ import { saveModelWithMetadata } from './rl-model-storage';
 import type { AIContext, AIDecision } from './types';
 import type { Observation } from './rl-observation';
 import type { Step } from './rl-dqn-model';
+import { MAX_EPISODE_TIME_MS } from '@/app/games/tank-trouble/constants/game-constants';
 
 export interface TrainingStats {
   episode: number;
@@ -33,7 +34,7 @@ export interface TrainingConfig {
   // TODO: Implement headless mode later - this will allow faster training by skipping rendering
   // When implemented, headless mode will run game logic without rendering UI for faster training
   headless: boolean;
-  maxEpisodeTimeMs: number; // Maximum episode duration in milliseconds before timeout (default: 90000 = 90 seconds)
+  maxEpisodeTimeMs: number; // Maximum episode duration in milliseconds before timeout (default: MAX_EPISODE_TIME_MS = 60 seconds)
   onEpisodeComplete?: (stats: TrainingStats) => void;
   onTrainingUpdate?: (stats: Partial<TrainingStats>) => void;
 }
@@ -46,6 +47,7 @@ export class RLTrainingManager {
   private stats: TrainingStats;
   private isTraining: boolean = false;
   private currentEpisode: number = 0;
+  private completedEpisodes: number = 0; // Track completed episodes separately for accurate average calculation
   private stepCount: number = 0;
   private hasTrainedAtLeastOnce: boolean = false; // Track if training has occurred at least once
   // Per-game state tracking
@@ -64,7 +66,7 @@ export class RLTrainingManager {
       // TODO: Implement headless mode later - this will allow faster training by skipping rendering
       // When implemented, set headless: true by default, or use config.headless if provided
       headless: false, // Currently always false - headless mode not yet implemented
-      maxEpisodeTimeMs: 90000, // 90 seconds default
+      maxEpisodeTimeMs: MAX_EPISODE_TIME_MS,
       ...config,
     };
 
@@ -288,9 +290,10 @@ export class RLTrainingManager {
     this.stats.episode = this.currentEpisode;
     this.stats.epsilon = this.agent.getEpsilon();
     
-    // Update average reward (totalReward was already updated in onEpisodeComplete)
-    if (this.currentEpisode > 0) {
-      this.stats.averageReward = this.stats.totalReward / this.currentEpisode;
+    // Update average reward using completed episodes (not currentEpisode which includes in-progress games)
+    // This ensures averageReward reflects only completed games
+    if (this.completedEpisodes > 0) {
+      this.stats.averageReward = this.stats.totalReward / this.completedEpisodes;
     }
     
     // Save model periodically
@@ -337,8 +340,13 @@ export class RLTrainingManager {
     // In AI vs AI mode, both tanks call this, but we only want to count once
     if (!isBlueTank) {
       this.stats.totalReward += totalGameReward;
+      this.completedEpisodes++;
       
-      // Debug: Log episode completion with per-game reward
+      // Update average reward immediately when episode completes
+      // Use completedEpisodes for accurate average (not currentEpisode which includes in-progress games)
+      if (this.completedEpisodes > 0) {
+        this.stats.averageReward = this.stats.totalReward / this.completedEpisodes;
+      }
     }
     
     // Clean up per-game tracking for this game when episode completes
@@ -358,6 +366,7 @@ export class RLTrainingManager {
     if (!this.isTraining) {
       this.isTraining = true;
       this.currentEpisode = 0;
+      this.completedEpisodes = 0;
       this.stepCount = 0;
       // Reset episode stats when training starts
       this.stats.episodeReward = 0;

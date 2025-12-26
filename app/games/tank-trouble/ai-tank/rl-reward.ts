@@ -11,6 +11,7 @@ import type { AIDecision } from './types';
 import { TANK_SIZE } from '@/app/games/tank-trouble/config';
 import { distance } from '@/app/games/tank-trouble/utils/math';
 import { getTankCenter } from '@/app/games/tank-trouble/utils/tank-utils';
+import { MAX_EPISODE_TIME_MS } from '@/app/games/tank-trouble/constants/game-constants';
 
 export interface PreviousState {
   aiTank: Tank;
@@ -67,7 +68,7 @@ export function calculateReward(
   previous: PreviousState,
   current: CurrentState,
   action: AIDecision,
-  maxEpisodeTimeMs: number = 90000
+  maxEpisodeTimeMs: number = MAX_EPISODE_TIME_MS
 ): RewardInfo {
   let totalReward = 0;
   const breakdown: RewardInfo['breakdown'] = {};
@@ -76,7 +77,7 @@ export function calculateReward(
   if (previous.episodeStartTime && !previous.timeoutApplied) {
     const episodeElapsed = current.tickTime - previous.episodeStartTime;
     if (episodeElapsed >= maxEpisodeTimeMs) {
-      const timeoutPenalty = -50; // 50-point loss for timeout - strongly discourages boring/long games
+      const timeoutPenalty = -100; // 100-point loss for timeout (doubled from -50) - strongly discourages boring/long games
       totalReward += timeoutPenalty;
       breakdown.timeoutPenalty = timeoutPenalty;
     }

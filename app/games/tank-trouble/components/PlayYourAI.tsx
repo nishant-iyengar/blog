@@ -145,7 +145,8 @@ export function PlayYourAI({ onBack }: PlayYourAIProps) {
     keysRef: gameInput.keysRef,
   }), [tanks, bullets, lastShotTimes, isPaused, gameInput.keysRef]);
 
-  const maxEpisodeTimeMs = 90000;
+  // No timeout in PlayYourAI mode - games can run indefinitely since we're not training
+  const maxEpisodeTimeMs = Number.MAX_SAFE_INTEGER;
 
   const gameLogic = useMultiGameLogic({
     mapData: typedMapData,

@@ -11,6 +11,7 @@ import { extractObservation, Observation } from './rl-observation';
 import { calculateReward, RewardInfo } from './rl-reward';
 import { actionToDecision, DecisionToAction } from './rl-actions';
 import type { AIDecision } from './types';
+import { MAX_EPISODE_TIME_MS } from '@/app/games/tank-trouble/constants/game-constants';
 
 export interface RLEnvironmentState {
   observation: Observation;
@@ -54,7 +55,7 @@ export class TankTroubleRLEnv {
   private positionHistory: Array<{ x: number; y: number; tickTime: number }> = [];
   private maxEpisodeTimeMs: number;
 
-  constructor(maxEpisodeTimeMs: number = 90000) {
+  constructor(maxEpisodeTimeMs: number = MAX_EPISODE_TIME_MS) {
     this.maxEpisodeTimeMs = maxEpisodeTimeMs;
   }
 

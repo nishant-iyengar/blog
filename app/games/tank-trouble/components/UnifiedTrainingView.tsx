@@ -87,6 +87,7 @@ import { DQNAgent } from '@/app/games/tank-trouble/ai-tank/rl-dqn-model';
 import { TensorFlowJSModel, type ExtendedRLModel } from '@/app/games/tank-trouble/ai-tank/rl-model';
 import type { Observation } from '@/app/games/tank-trouble/ai-tank/rl-observation';
 import type { AIDecision } from '@/app/games/tank-trouble/ai-tank/types';
+import { MAX_EPISODE_TIME_MS } from '@/app/games/tank-trouble/constants/game-constants';
 // import { TrainingDictionary } from './TrainingDictionary';
 
 interface GameInstance {
@@ -408,7 +409,7 @@ export function UnifiedTrainingView() {
   };
 
   // Get max episode time from training manager
-  const maxEpisodeTimeMs = training.manager?.getMaxEpisodeTimeMs() || 90000;
+  const maxEpisodeTimeMs = training.manager?.getMaxEpisodeTimeMs() || MAX_EPISODE_TIME_MS;
 
   // Prepare game instances for multi-game logic hook - memoize to avoid recreating on every render
   // Note: This will still recreate when gameInstances changes (which is frequent during gameplay),

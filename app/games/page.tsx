@@ -42,12 +42,12 @@ export default function GamesPage() {
             
             <div className="space-y-6">
               <div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4 mb-4">
                   <h2 className="text-xl font-semibold text-[#4A5568]">Tank Trouble</h2>
                   {tankTroubleView === 'training' && (
                     <button
                       onClick={() => setTankTroubleView('play')}
-                      className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
+                      className="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800 font-medium shadow-md"
                     >
                       Play your AI
                     </button>

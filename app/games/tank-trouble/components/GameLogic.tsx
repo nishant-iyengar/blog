@@ -6,6 +6,7 @@ import { updateBullets } from '@/app/games/tank-trouble/utils/bullet';
 import { generateRandomSpawnPosition } from '@/app/games/tank-trouble/utils/spawn';
 import { updateAITank, type AIConfig } from '@/app/games/tank-trouble/ai-tank';
 import type { RLTrainingManager } from '@/app/games/tank-trouble/ai-tank/rl-training-manager';
+import { MAX_EPISODE_TIME_MS } from '@/app/games/tank-trouble/constants/game-constants';
 
 export interface GameInstance {
   id: number;
@@ -49,7 +50,7 @@ export function useMultiGameLogic({
   suns,
   aiConfig,
   trainingManager,
-  maxEpisodeTimeMs = 90000,
+  maxEpisodeTimeMs = MAX_EPISODE_TIME_MS,
   gameInstances,
   onTanksUpdate,
   onBulletsUpdate,

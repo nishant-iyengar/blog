@@ -33,7 +33,8 @@ export const COLLISION_SIZE_BUFFER = 5; // Buffer pixels for collision detection
 export const HIGH_THREAT_DISTANCE_MULTIPLIER = 3; // Multiplier for high threat distance
 
 // RL Reward Constants
-export const TIMEOUT_PENALTY = -50;
+export const TIMEOUT_PENALTY = -100;
+export const MAX_EPISODE_TIME_MS = 60000; // 60 seconds - maximum episode duration before timeout
 export const SURVIVAL_REWARD_PER_TICK = 0.01;
 export const HIT_ENEMY_REWARD = 100;
 export const GOT_HIT_PENALTY = -100;
