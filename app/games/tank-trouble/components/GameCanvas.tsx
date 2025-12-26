@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { Tank, Bullet, Barrier, Sun } from '@/app/games/tank-trouble/types';
-import { GAME_CONFIG, TANK_SIZE, SUN_INFLUENCE_RADIUS } from '@/app/games/tank-trouble/config';
+import { GAME_CONFIG, TANK_SIZE, SUN_INFLUENCE_RADIUS, BULLET_MAX_AGE } from '@/app/games/tank-trouble/config';
 
 interface GameCanvasProps {
   width: number;
@@ -12,6 +12,7 @@ interface GameCanvasProps {
   isPaused: boolean;
   tankImages: { blue: HTMLImageElement | null; red: HTMLImageElement | null };
   gameOverWinner: 'blue' | 'red' | null;
+  scale?: number; // Optional scale factor for display
 }
 
 export function GameCanvas({
@@ -24,6 +25,7 @@ export function GameCanvas({
   isPaused,
   tankImages,
   gameOverWinner,
+  scale = 1,
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -234,7 +236,7 @@ export function GameCanvas({
 
     // Draw bullets
     for (const bullet of bullets) {
-      // Draw bullet explosion
+      // Handle bullet explosion (from collisions)
       if (bullet.exploding && bullet.explosionStartTime) {
         const explosionDuration = 300;
         const elapsed = now - bullet.explosionStartTime;
@@ -252,10 +254,59 @@ export function GameCanvas({
         continue;
       }
       
-      ctx.fillStyle = bullet.owner === 'blue' ? '#3B82F6' : '#EF4444';
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, GAME_CONFIG.bullet.radius, 0, Math.PI * 2);
-      ctx.fill();
+      // Calculate fade alpha for bullets that are expiring (after 7 seconds)
+      const age = now - bullet.createdAt;
+      const fadeDuration = GAME_CONFIG.bullet.fadeDuration;
+      let alpha = 1;
+      
+      if (age > BULLET_MAX_AGE) {
+        // Bullet is fading out
+        const fadeProgress = (age - BULLET_MAX_AGE) / fadeDuration;
+        alpha = Math.max(0, 1 - fadeProgress);
+      }
+      
+      // Only draw if still visible
+      if (alpha > 0) {
+        // Extract RGB values and apply alpha
+        const r = bullet.owner === 'blue' ? 59 : 239;
+        const g = bullet.owner === 'blue' ? 130 : 68;
+        const b = bullet.owner === 'blue' ? 246 : 68;
+        
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        
+        // Draw simple rectangle bullet with rounded corners
+        const bulletLength = 6;
+        const bulletWidth = 3;
+        const radius = 1; // Small border radius
+        const angleRad = (bullet.angle * Math.PI) / 180;
+        
+        // Translate and rotate to bullet position and angle
+        ctx.translate(bullet.x, bullet.y);
+        ctx.rotate(angleRad);
+        
+        // Draw rounded rectangle
+        const x = -bulletLength / 2;
+        const y = -bulletWidth / 2;
+        const w = bulletLength;
+        const h = bulletWidth;
+        
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + w - radius, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+        ctx.lineTo(x + w, y + h - radius);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+        ctx.lineTo(x + radius, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.restore();
+      }
     }
 
     // Draw UI
@@ -263,6 +314,16 @@ export function GameCanvas({
     ctx.font = `${GAME_CONFIG.visual.uiTextSize}px Inter`;
     ctx.fillText(`Blue: ${tanks[0]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY);
     ctx.fillText(`Red: ${tanks[1]?.lives ?? 0} lives`, GAME_CONFIG.visual.uiTextOffsetX, GAME_CONFIG.visual.uiTextOffsetY + 12);
+    
+    // Draw instructions in top-right corner
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.font = `${GAME_CONFIG.visual.uiTextSize - 1}px Inter`;
+    const instructionY = GAME_CONFIG.visual.uiTextOffsetY;
+    const instructionX = width - GAME_CONFIG.visual.uiTextOffsetX;
+    ctx.fillText('Player 1 (Blue): Arrows + Space', instructionX, instructionY);
+    ctx.fillText('Player 2 (Red): WASD + Q', instructionX, instructionY + 12);
+    ctx.textAlign = 'left'; // Reset alignment
     
     // Draw game over screen
     if (gameOverWinner) {
@@ -290,24 +351,22 @@ export function GameCanvas({
     }
   }, [width, height, tanks, bullets, barriers, suns, isPaused, tankImages, gameOverWinner]);
 
+  // Calculate display size: internal resolution is 2x for crisp rendering, then apply scale
+  const displayWidth = width * 2 * scale;
+  const displayHeight = height * 2 * scale;
+
   return (
-    <div className="flex flex-col items-start gap-4">
-      <canvas
-        ref={canvasRef}
-        className="border-2 border-[#4A5568] rounded outline-none"
-        style={{ width: `${width * 2}px`, height: `${height * 2}px` }}
-        tabIndex={0}
-        onFocus={(e) => e.target.focus()}
-      />
-      <div className="text-sm text-[#718096] space-y-2">
-        <div>
-          <strong>Player 1 (Blue):</strong> Arrow keys to move/rotate, Space to shoot
-        </div>
-        <div>
-          <strong>Player 2 (Red):</strong> WASD to move/rotate, Q to shoot
-        </div>
-      </div>
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="border-2 border-[#4A5568] rounded outline-none"
+      style={{ 
+        width: `${displayWidth}px`, 
+        height: `${displayHeight}px`,
+        display: 'block',
+      }}
+      tabIndex={0}
+      onFocus={(e) => e.target.focus()}
+    />
   );
 }
 

@@ -4,6 +4,8 @@ import { TICK_INTERVAL, GAME_CONFIG } from '@/app/games/tank-trouble/config';
 import { updatePlayer1Tank, updatePlayer2Tank } from '@/app/games/tank-trouble/utils/tank';
 import { updateBullets } from '@/app/games/tank-trouble/utils/bullet';
 import { generateRandomSpawnPosition } from '@/app/games/tank-trouble/utils/spawn';
+import { updateAITank, type AIConfig } from '@/app/games/tank-trouble/ai-tank';
+import type { RLTrainingManager } from '@/app/games/tank-trouble/ai-tank/rl-training-manager';
 
 interface GameLogicProps {
   isPaused: boolean;
@@ -14,10 +16,19 @@ interface GameLogicProps {
   tanks: Tank[];
   bullets: Bullet[];
   lastShotTimes: { blue: number; red: number };
+  gameMode: 'ai' | 'person-vs-ai';
+  aiConfig?: AIConfig;
+  trainingManager?: RLTrainingManager | null;
+  gameId?: string; // Unique identifier for this game instance
+  speedMultiplier?: number; // Speed multiplier for AI vs AI games (default: 1)
   onTanksUpdate: (tanks: Tank[]) => void;
   onBulletsUpdate: (bullets: Bullet[]) => void;
   onLastShotTimesUpdate: (times: { blue: number; red: number }) => void;
   onGameOver: (winner: 'blue' | 'red' | null) => void;
+}
+
+interface GameTickOptions {
+  skipIntervalCheck?: boolean; // Skip the interval check (for speedup)
 }
 
 export function useGameLogic({
@@ -29,6 +40,11 @@ export function useGameLogic({
   tanks,
   bullets,
   lastShotTimes,
+  gameMode,
+  aiConfig,
+  trainingManager,
+  gameId,
+  speedMultiplier = 1,
   onTanksUpdate,
   onBulletsUpdate,
   onLastShotTimesUpdate,
@@ -47,16 +63,23 @@ export function useGameLogic({
     bulletsRef.current = bullets;
   }, [bullets]);
 
-  const gameTick = useCallback(() => {
+  const gameTick = useCallback((options?: GameTickOptions) => {
     // Skip game updates if paused
     if (isPaused) {
       return;
     }
     
     const now = Date.now();
-    if (now - lastTickRef.current < TICK_INTERVAL) {
-      return;
+    
+    // If skipIntervalCheck is true (for speedup), bypass the interval check
+    if (!options?.skipIntervalCheck) {
+      // Normal interval check - adjust based on speed multiplier
+      const adjustedTickInterval = TICK_INTERVAL / speedMultiplier;
+      if (now - lastTickRef.current < adjustedTickInterval) {
+        return;
+      }
     }
+    
     const tickTime = now;
     lastTickRef.current = tickTime;
 
@@ -65,41 +88,111 @@ export function useGameLogic({
     let newLastShotTimes = { ...lastShotTimes };
     const keys = keysRef.current;
 
-    // Update Player 1 (Blue) - Arrow keys + Space
+    // Update Player 1 (Blue) - Arrow keys + Space, or AI if training
     if (currentTanks[0]?.lives > 0) {
-      const result = updatePlayer1Tank({
-        tank: currentTanks[0],
-        tankIndex: 0,
-        keys,
-        tickTime,
-        lastShotTime: lastShotTimes.blue,
-        bullets: currentBullets,
-        mapWidth: mapData.width,
-        mapHeight: mapData.height,
-        barriers,
-        suns,
-        allTanks: currentTanks,
-      });
+      let result;
+      // In person-vs-ai mode, player controls blue tank
+      if (gameMode === 'person-vs-ai') {
+        // Player controls blue tank with keyboard
+        result = updatePlayer1Tank({
+          tank: currentTanks[0],
+          tankIndex: 0,
+          keys,
+          tickTime,
+          lastShotTime: lastShotTimes.blue,
+          bullets: currentBullets,
+          mapWidth: mapData.width,
+          mapHeight: mapData.height,
+          barriers,
+          suns,
+          allTanks: currentTanks,
+        });
+      } else if (trainingManager && trainingManager.getIsTraining() && gameMode === 'ai') {
+        // AI vs AI training: use AI for blue tank too
+        result = updateAITank(
+          {
+            tank: currentTanks[0],
+            tankIndex: 0,
+            keys, // Not used by AI, but required by interface
+            tickTime,
+            lastShotTime: lastShotTimes.blue,
+            bullets: currentBullets,
+            mapWidth: mapData.width,
+            mapHeight: mapData.height,
+            barriers,
+            suns,
+            allTanks: currentTanks,
+          },
+          aiConfig,
+          null, // Don't train on blue tank (only red tank is being trained)
+          gameId
+        );
+      } else {
+        // Normal gameplay: use keyboard input
+        result = updatePlayer1Tank({
+          tank: currentTanks[0],
+          tankIndex: 0,
+          keys,
+          tickTime,
+          lastShotTime: lastShotTimes.blue,
+          bullets: currentBullets,
+          mapWidth: mapData.width,
+          mapHeight: mapData.height,
+          barriers,
+          suns,
+          allTanks: currentTanks,
+        });
+      }
       currentTanks[0] = result.updatedTank;
       currentBullets.push(...result.newBullets);
       newLastShotTimes.blue = result.lastShotTime;
     }
 
-    // Update Player 2 (Red) - WASD + Q
+    // Update Player 2 (Red) - WASD + Q or AI
     if (currentTanks[1]?.lives > 0) {
-      const result = updatePlayer2Tank({
-        tank: currentTanks[1],
-        tankIndex: 1,
-        keys,
-        tickTime,
-        lastShotTime: lastShotTimes.red,
-        bullets: currentBullets,
-        mapWidth: mapData.width,
-        mapHeight: mapData.height,
-        barriers,
-        suns,
-        allTanks: currentTanks,
-      });
+      let result;
+      if (gameMode === 'ai' || gameMode === 'person-vs-ai') {
+        // Use AI to control red tank (in both AI mode and person-vs-ai mode)
+        result = updateAITank(
+          {
+            tank: currentTanks[1],
+            tankIndex: 1,
+            keys, // Not used by AI, but required by interface
+            tickTime,
+            lastShotTime: lastShotTimes.red,
+            bullets: currentBullets,
+            mapWidth: mapData.width,
+            mapHeight: mapData.height,
+            barriers,
+            suns,
+            allTanks: currentTanks,
+          },
+          aiConfig,
+          trainingManager, // Always train on red tank (AI) in person-vs-ai mode
+          gameId
+        );
+      } else {
+        // This should never happen - all games are either AI or person-vs-ai
+        // Fallback to AI if somehow we get here
+        result = updateAITank(
+          {
+            tank: currentTanks[1],
+            tankIndex: 1,
+            keys,
+            tickTime,
+            lastShotTime: lastShotTimes.red,
+            bullets: currentBullets,
+            mapWidth: mapData.width,
+            mapHeight: mapData.height,
+            barriers,
+            suns,
+            allTanks: currentTanks,
+          },
+          aiConfig,
+          trainingManager,
+          gameId
+        );
+      }
       currentTanks[1] = result.updatedTank;
       currentBullets.push(...result.newBullets);
       newLastShotTimes.red = result.lastShotTime;
@@ -207,6 +300,8 @@ export function useGameLogic({
     barriers,
     suns,
     lastShotTimes,
+    gameMode,
+    aiConfig,
     onTanksUpdate,
     onBulletsUpdate,
     onLastShotTimesUpdate,

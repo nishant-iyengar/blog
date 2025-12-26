@@ -45,27 +45,41 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
   const bulletCollisionSize = GAME_CONFIG.bullet.collisionSize;
 
   // First pass: check for bullet-bullet collisions
+  // Use continuous collision detection to prevent bullets passing through each other
   for (let i = 0; i < bullets.length; i++) {
     if (bulletsToRemove.has(i)) continue;
     const bullet = bullets[i];
+    if (bullet.exploding) continue; // Skip exploding bullets
     
+    // Skip bullets from the same owner (they shouldn't collide with each other)
+    // Only check collisions between bullets from different owners
     for (let j = i + 1; j < bullets.length; j++) {
       if (bulletsToRemove.has(j)) continue;
       const otherBullet = bullets[j];
+      if (otherBullet.exploding) continue; // Skip exploding bullets
       
+      // Only check collisions between bullets from different owners
+      if (bullet.owner === otherBullet.owner) {
+        continue;
+      }
+      
+      // Check current distance
       const dx = bullet.x - otherBullet.x;
       const dy = bullet.y - otherBullet.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
+      // Check if bullets are actually colliding (within collision size)
       if (distance < GAME_CONFIG.bullet.collisionSize) {
         // Both bullets start exploding
         if (!bullet.exploding) {
           bullets[i] = { ...bullet, exploding: true, explosionStartTime: tickTime };
+          bulletsToRemove.add(i);
         }
         if (!otherBullet.exploding) {
           bullets[j] = { ...otherBullet, exploding: true, explosionStartTime: tickTime };
+          bulletsToRemove.add(j);
         }
-        break;
+        break; // This bullet is now exploding, no need to check more collisions
       }
     }
   }
@@ -86,11 +100,15 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
       continue; // Remove after animation
     }
 
-    // Check bullet age
-    if (tickTime - bullet.createdAt > BULLET_MAX_AGE) {
-      // Start explosion animation
-      updatedBullets.push({ ...bullet, exploding: true, explosionStartTime: tickTime });
-      continue;
+    // Check bullet age - bullets fade away instead of exploding
+    const age = tickTime - bullet.createdAt;
+    if (age > BULLET_MAX_AGE) {
+      // Remove bullet after fade duration
+      const fadeDuration = GAME_CONFIG.bullet.fadeDuration;
+      if (age > BULLET_MAX_AGE + fadeDuration) {
+        continue; // Bullet has faded completely, remove it
+      }
+      // Keep bullet but mark as fading (will be handled in rendering)
     }
 
     // Apply gravitational force from suns
