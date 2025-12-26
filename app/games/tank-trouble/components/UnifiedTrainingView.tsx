@@ -7,7 +7,7 @@
 
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 // Component to update stats reactively (no polling)
 function StatsDebouncer({ 
@@ -35,7 +35,7 @@ import mapData from '@/content/games/tank-trouble-map.json';
 import type { Tank, Bullet, TankTroubleMapData } from '@/app/games/tank-trouble/types';
 import { useGameInput } from '@/app/games/tank-trouble/hooks/useGameInput';
 import { useTankImages } from '@/app/games/tank-trouble/hooks/useTankImages';
-import { useGameLogic } from '@/app/games/tank-trouble/components/GameLogic';
+import { useMultiGameLogic, type GameInstance as GameLogicInstance } from '@/app/games/tank-trouble/components/GameLogic';
 import { GameCanvas } from '@/app/games/tank-trouble/components/GameCanvas';
 import { getInitialSpawnPositions } from '@/app/games/tank-trouble/utils/spawn';
 import { DEFAULT_AI_CONFIG, type AIConfig, rlModelManager } from '@/app/games/tank-trouble/ai-tank';
@@ -192,69 +192,6 @@ export function UnifiedTrainingView() {
     return { current: new Set<string>() };
   };
 
-  // Create update handlers for each instance
-  const createUpdateHandlers = (instanceId: number) => ({
-    onTanksUpdate: (tanks: Tank[]) => {
-      setGameInstances((prev) =>
-        prev.map((gi) => (gi.id === instanceId ? { ...gi, tanks } : gi))
-      );
-    },
-    onBulletsUpdate: (bullets: Bullet[]) => {
-      setGameInstances((prev) =>
-        prev.map((gi) => (gi.id === instanceId ? { ...gi, bullets } : gi))
-      );
-    },
-    onLastShotTimesUpdate: (times: { blue: number; red: number }) => {
-      setGameInstances((prev) =>
-        prev.map((gi) => (gi.id === instanceId ? { ...gi, lastShotTimes: times } : gi))
-      );
-    },
-    onGameOver: (winner: 'blue' | 'red' | null) => {
-      // When a game ends, increment episode count (shared across all games)
-      // Use atomic ref counter to prevent race conditions when multiple games end simultaneously
-      const newEpisodeNumber = nextEpisodeNumberRef.current++;
-      
-      training.incrementEpisode();
-
-      // Reset game state with fresh tanks (both tanks get full lives)
-      // Update the episode number for this game atomically
-      setGameInstances((prev) =>
-        prev.map((gi) => {
-          if (gi.id === instanceId) {
-            // Update game type stats for display purposes
-            setGameStats((stats) => {
-              return {
-                totalGames: stats.totalGames, // Will be updated by episode increment above
-                aiVsAiGames: gi.gameType === 'ai-vs-ai' ? stats.aiVsAiGames + 1 : stats.aiVsAiGames,
-                personVsAiGames: gi.gameType === 'person-vs-ai' ? stats.personVsAiGames + 1 : stats.personVsAiGames,
-              };
-            });
-
-            // Start new game immediately - reset all game state
-            // getInitialSpawnPositions creates both tanks with full lives
-            return {
-              ...gi,
-              tanks: getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current),
-              bullets: [],
-              lastShotTimes: { blue: 0, red: 0 },
-              gameOverWinner: null,
-              episodeReward: 0,
-              episodeLength: 0,
-              episodeStartTime: Date.now(),
-              isActive: training.isTraining, // Only active if training is running
-              episodeNumber: newEpisodeNumber, // Set to unique episode number (atomic increment prevents duplicates)
-            };
-          }
-          return gi;
-        })
-      );
-      
-      // If user was playing this game and it ended, reset userPlayingGameId
-      if (instanceId === userPlayingGameId) {
-        setUserPlayingGameId(null);
-      }
-    },
-  });
 
   // Replace AI game with person game (user joins as Blue, AI is Red)
   // Preserves current game state - user takes control of existing blue tank
@@ -302,27 +239,89 @@ export function UnifiedTrainingView() {
   // Get max episode time from training manager
   const maxEpisodeTimeMs = training.manager?.getMaxEpisodeTimeMs() || 90000;
 
-  // Create game logic for each instance using map
-  const gameLogics = gameInstances.map((instance, idx) =>
-    useGameLogic({
-      isPaused: !instance?.isActive || !training.isTraining || (idx === userPlayingGameId && gameInput.isPaused),
-      keysRef: getKeysRef(idx),
-      mapData: typedMapData,
-      barriers: barriersRef.current,
-      suns: sunsRef.current,
-      tanks: instance?.tanks || [],
-      bullets: instance?.bullets || [],
-      lastShotTimes: instance?.lastShotTimes || { blue: 0, red: 0 },
-      gameMode: instance?.gameType === 'person-vs-ai' ? 'person-vs-ai' : 'ai',
-      aiConfig,
-      trainingManager: training.manager,
-      gameId: `game-${idx}`,
-      speedMultiplier: instance?.gameType === 'ai-vs-ai' ? AI_VS_AI_SPEED_MULTIPLIER : 1,
-      episodeStartTime: instance?.episodeStartTime,
-      maxEpisodeTimeMs,
-      ...createUpdateHandlers(idx),
-    })
-  );
+  // Prepare game instances for multi-game logic hook - memoize to avoid recreating on every render
+  // Note: This will still recreate when gameInstances changes (which is frequent during gameplay),
+  // but prevents recreation on unrelated renders (UI state changes, etc.)
+  const gameLogicInstances: GameLogicInstance[] = useMemo(() => {
+    return gameInstances.map((instance) => ({
+      id: instance.id,
+      tanks: instance.tanks,
+      bullets: instance.bullets,
+      lastShotTimes: instance.lastShotTimes,
+      gameMode: instance.gameType === 'person-vs-ai' ? 'person-vs-ai' : 'ai',
+      gameId: `game-${instance.id}`,
+      isPaused: !instance.isActive || !training.isTraining || (instance.id === userPlayingGameId && gameInput.isPaused),
+      speedMultiplier: instance.gameType === 'ai-vs-ai' ? AI_VS_AI_SPEED_MULTIPLIER : 1,
+      episodeStartTime: instance.episodeStartTime,
+      keysRef: getKeysRef(instance.id), // getKeysRef returns stable refs, safe to call here
+    }));
+  }, [
+    gameInstances,
+    training.isTraining,
+    userPlayingGameId,
+    gameInput.isPaused,
+    // getKeysRef is a stable function (doesn't change between renders), so not included in deps
+  ]);
+
+  // Single hook call for all games
+  const gameLogic = useMultiGameLogic({
+    mapData: typedMapData,
+    barriers: barriersRef.current,
+    suns: sunsRef.current,
+    aiConfig,
+    trainingManager: training.manager,
+    maxEpisodeTimeMs,
+    gameInstances: gameLogicInstances,
+    onTanksUpdate: (gameId, tanks) => {
+      setGameInstances((prev) =>
+        prev.map((gi) => (gi.id === gameId ? { ...gi, tanks } : gi))
+      );
+    },
+    onBulletsUpdate: (gameId, bullets) => {
+      setGameInstances((prev) =>
+        prev.map((gi) => (gi.id === gameId ? { ...gi, bullets } : gi))
+      );
+    },
+    onLastShotTimesUpdate: (gameId, times) => {
+      setGameInstances((prev) =>
+        prev.map((gi) => (gi.id === gameId ? { ...gi, lastShotTimes: times } : gi))
+      );
+    },
+    onGameOver: (gameId, winner) => {
+      const newEpisodeNumber = nextEpisodeNumberRef.current++;
+      training.incrementEpisode();
+
+      setGameInstances((prev) =>
+        prev.map((gi) => {
+          if (gi.id === gameId) {
+            setGameStats((stats) => ({
+              ...stats,
+              aiVsAiGames: gi.gameType === 'ai-vs-ai' ? stats.aiVsAiGames + 1 : stats.aiVsAiGames,
+              personVsAiGames: gi.gameType === 'person-vs-ai' ? stats.personVsAiGames + 1 : stats.personVsAiGames,
+            }));
+
+            return {
+              ...gi,
+              tanks: getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current),
+              bullets: [],
+              lastShotTimes: { blue: 0, red: 0 },
+              gameOverWinner: null,
+              episodeReward: 0,
+              episodeLength: 0,
+              episodeStartTime: Date.now(),
+              isActive: training.isTraining,
+              episodeNumber: newEpisodeNumber,
+            };
+          }
+          return gi;
+        })
+      );
+
+      if (gameId === userPlayingGameId) {
+        setUserPlayingGameId(null);
+      }
+    },
+  });
 
   // Handle training state changes
   useEffect(() => {
@@ -346,61 +345,54 @@ export function UnifiedTrainingView() {
     }
 
     const animationFrames: number[] = [];
-
-    gameLogics.forEach((gameLogic, idx) => {
-      if (gameInstances[idx]?.isActive) {
-        const isAIVsAI = gameInstances[idx]?.gameType === 'ai-vs-ai';
-        const speedMultiplier = isAIVsAI ? AI_VS_AI_SPEED_MULTIPLIER : 1;
-        
-        // For speedup, we run multiple ticks per frame
-        // requestAnimationFrame is limited to ~60 FPS, so we simulate faster gameplay
-        // by running multiple game ticks per frame with interval checks bypassed
-        let lastFrameTime = performance.now();
-        const gameLoop = (currentTime: number) => {
+    let lastFrameTime = performance.now();
+    
+    const gameLoop = (currentTime: number) => {
+      // Tick all active games
+      gameInstances.forEach((instance, idx) => {
+        if (instance.isActive) {
+          const isAIVsAI = instance.gameType === 'ai-vs-ai';
+          const speedMultiplier = isAIVsAI ? AI_VS_AI_SPEED_MULTIPLIER : 1;
+          
           if (isAIVsAI && speedMultiplier > 1) {
             // For AI vs AI games, run multiple ticks per frame
-            // Calculate how many ticks we should run based on elapsed time
             const elapsed = currentTime - lastFrameTime;
             const targetFrameTime = 1000 / 72; // Target 72 FPS base
             const ticksToRun = Math.max(1, Math.floor((elapsed / targetFrameTime) * speedMultiplier));
             
-            // Run the calculated number of ticks
             for (let i = 0; i < ticksToRun; i++) {
-              gameLogic.gameTick({ skipIntervalCheck: i > 0 }); // First tick checks interval, rest bypass
+              gameLogic.gameTick({ skipIntervalCheck: i > 0, gameId: instance.id });
             }
           } else {
-            // Normal speed for person games (one tick per frame)
-            gameLogic.gameTick();
+            // Normal speed (one tick per frame)
+            gameLogic.gameTick({ gameId: instance.id });
           }
           
-          // Update episode length reactively (calculated on each frame, no polling)
-          setGameInstances((prev) => {
-            const instance = prev[idx];
-            if (instance?.isActive && instance.episodeStartTime) {
-              const elapsed = (Date.now() - instance.episodeStartTime) / 1000;
-              const newEpisodeLength = Math.floor(elapsed * 72);
-              if (instance.episodeLength !== newEpisodeLength) {
-                return prev.map((gi, i) => 
-                  i === idx ? { ...gi, episodeLength: newEpisodeLength } : gi
-                );
-              }
+          // Update episode length reactively
+          if (instance.episodeStartTime) {
+            const elapsed = (Date.now() - instance.episodeStartTime) / 1000;
+            const newEpisodeLength = Math.floor(elapsed * 72);
+            if (instance.episodeLength !== newEpisodeLength) {
+              setGameInstances((prev) =>
+                prev.map((gi) => (gi.id === instance.id ? { ...gi, episodeLength: newEpisodeLength } : gi))
+              );
             }
-            return prev;
-          });
-          
-          lastFrameTime = currentTime;
-          const frameId = requestAnimationFrame(gameLoop);
-          animationFrames.push(frameId);
-        };
-        const frameId = requestAnimationFrame(gameLoop);
-        animationFrames.push(frameId);
-      }
-    });
+          }
+        }
+      });
+      
+      lastFrameTime = currentTime;
+      const frameId = requestAnimationFrame(gameLoop);
+      animationFrames.push(frameId);
+    };
+    
+    const frameId = requestAnimationFrame(gameLoop);
+    animationFrames.push(frameId);
 
     return () => {
       animationFrames.forEach((id) => cancelAnimationFrame(id));
     };
-  }, [training.isTraining, gameLogics, gameInstances]);
+  }, [training.isTraining, gameLogic, gameInstances]);
 
   const loadSavedModels = useCallback(async () => {
     setIsLoadingModels(true);

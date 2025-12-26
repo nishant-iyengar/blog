@@ -7,394 +7,393 @@ import { generateRandomSpawnPosition } from '@/app/games/tank-trouble/utils/spaw
 import { updateAITank, type AIConfig } from '@/app/games/tank-trouble/ai-tank';
 import type { RLTrainingManager } from '@/app/games/tank-trouble/ai-tank/rl-training-manager';
 
-interface GameLogicProps {
-  isPaused: boolean;
-  keysRef: React.MutableRefObject<Set<string>>;
-  mapData: TankTroubleMapData;
-  barriers: Barrier[];
-  suns: Sun[];
+export interface GameInstance {
+  id: number;
   tanks: Tank[];
   bullets: Bullet[];
   lastShotTimes: { blue: number; red: number };
   gameMode: 'ai' | 'person-vs-ai';
+  gameId: string;
+  isPaused: boolean;
+  speedMultiplier: number;
+  episodeStartTime?: number;
+  keysRef: React.MutableRefObject<Set<string>>;
+}
+
+interface MultiGameLogicProps {
+  mapData: TankTroubleMapData;
+  barriers: Barrier[];
+  suns: Sun[];
   aiConfig?: AIConfig;
   trainingManager?: RLTrainingManager | null;
-  gameId?: string; // Unique identifier for this game instance
-  speedMultiplier?: number; // Speed multiplier for AI vs AI games (default: 1)
-  episodeStartTime?: number; // When the current episode started (for preventing immediate game over)
-  maxEpisodeTimeMs?: number; // Maximum episode duration before timeout (default: 90000 = 90 seconds)
-  onTanksUpdate: (tanks: Tank[]) => void;
-  onBulletsUpdate: (bullets: Bullet[]) => void;
-  onLastShotTimesUpdate: (times: { blue: number; red: number }) => void;
-  onGameOver: (winner: 'blue' | 'red' | null) => void;
+  maxEpisodeTimeMs?: number;
+  gameInstances: GameInstance[];
+  onTanksUpdate: (gameId: number, tanks: Tank[]) => void;
+  onBulletsUpdate: (gameId: number, bullets: Bullet[]) => void;
+  onLastShotTimesUpdate: (gameId: number, times: { blue: number; red: number }) => void;
+  onGameOver: (gameId: number, winner: 'blue' | 'red' | null) => void;
 }
 
 interface GameTickOptions {
-  skipIntervalCheck?: boolean; // Skip the interval check (for speedup)
+  skipIntervalCheck?: boolean;
+  gameId?: number; // Optional: tick specific game, otherwise tick all
 }
 
-export function useGameLogic({
-  isPaused,
-  keysRef,
+/**
+ * Multi-game logic hook - handles game ticks for multiple game instances
+ * This replaces the previous pattern of calling useGameLogic multiple times (which violated Rules of Hooks)
+ */
+export function useMultiGameLogic({
   mapData,
   barriers,
   suns,
-  tanks,
-  bullets,
-  lastShotTimes,
-  gameMode,
   aiConfig,
   trainingManager,
-  gameId,
-  speedMultiplier = 1,
-  episodeStartTime,
-  maxEpisodeTimeMs = 90000, // Default 90 seconds
+  maxEpisodeTimeMs = 90000,
+  gameInstances,
   onTanksUpdate,
   onBulletsUpdate,
   onLastShotTimesUpdate,
   onGameOver,
-}: GameLogicProps) {
-  // Track if game over has been triggered to prevent multiple calls
-  const gameOverTriggeredRef = useRef(false);
+}: MultiGameLogicProps) {
+  // Track game over states per game
+  const gameOverTriggeredRefs = useRef<Map<number, boolean>>(new Map());
   
-  // Reset game over flag when tanks are reset (new game starts)
+  // Track last tick times per game
+  const lastTickRefs = useRef<Map<number, number>>(new Map());
+  
+  // Track tank/bullet refs per game
+  const tanksRefs = useRef<Map<number, Tank[]>>(new Map());
+  const bulletsRefs = useRef<Map<number, Bullet[]>>(new Map());
+  
+  // Store latest gameInstances in ref for access in callback (avoid stale closure)
+  const gameInstancesRef = useRef(gameInstances);
   useEffect(() => {
-    // Check if both tanks have full lives (new game started)
-    if (tanks.length >= 2 && tanks[0]?.lives === GAME_CONFIG.tank.lives && tanks[1]?.lives === GAME_CONFIG.tank.lives) {
-      gameOverTriggeredRef.current = false;
-    }
-  }, [tanks]);
-  const lastTickRef = useRef<number>(0);
-  const tanksRef = useRef<Tank[]>(tanks);
-  const bulletsRef = useRef<Bullet[]>(bullets);
-
+    gameInstancesRef.current = gameInstances;
+  }, [gameInstances]);
+  
+  // Initialize refs for all games
+  useEffect(() => {
+    gameInstances.forEach((instance) => {
+      if (!tanksRefs.current.has(instance.id)) {
+        tanksRefs.current.set(instance.id, instance.tanks);
+      }
+      if (!bulletsRefs.current.has(instance.id)) {
+        bulletsRefs.current.set(instance.id, instance.bullets);
+      }
+    });
+  }, [gameInstances]);
+  
   // Update refs when state changes
   useEffect(() => {
-    tanksRef.current = tanks;
-  }, [tanks]);
-
-  useEffect(() => {
-    bulletsRef.current = bullets;
-  }, [bullets]);
+    gameInstances.forEach((instance) => {
+      tanksRefs.current.set(instance.id, instance.tanks);
+      bulletsRefs.current.set(instance.id, instance.bullets);
+      
+      // Reset game over flag when tanks are reset (new game started)
+      if (instance.tanks.length >= 2 && 
+          instance.tanks[0]?.lives === GAME_CONFIG.tank.lives && 
+          instance.tanks[1]?.lives === GAME_CONFIG.tank.lives) {
+        gameOverTriggeredRefs.current.set(instance.id, false);
+      }
+    });
+  }, [gameInstances]);
 
   const gameTick = useCallback((options?: GameTickOptions) => {
-    // Skip game updates if paused
-    if (isPaused) {
-      return;
-    }
-    
-    const now = Date.now();
-    
-    // If skipIntervalCheck is true (for speedup), bypass the interval check
-    if (!options?.skipIntervalCheck) {
-      // Normal interval check - adjust based on speed multiplier
-      const adjustedTickInterval = TICK_INTERVAL / speedMultiplier;
-      if (now - lastTickRef.current < adjustedTickInterval) {
+    // Use ref to get latest game instances (avoid stale closure)
+    const currentGameInstances = gameInstancesRef.current;
+    const gamesToTick = options?.gameId !== undefined 
+      ? currentGameInstances.filter(gi => gi.id === options.gameId)
+      : currentGameInstances;
+
+    gamesToTick.forEach((instance) => {
+      // Skip if paused
+      if (instance.isPaused) {
         return;
       }
-    }
-    
-    const tickTime = now;
-    lastTickRef.current = tickTime;
+      
+      const now = Date.now();
+      const lastTickTime = lastTickRefs.current.get(instance.id) || 0;
+      
+      // Check interval (unless skipIntervalCheck is true)
+      if (!options?.skipIntervalCheck) {
+        const adjustedTickInterval = TICK_INTERVAL / instance.speedMultiplier;
+        if (now - lastTickTime < adjustedTickInterval) {
+          return;
+        }
+      }
+      
+      const tickTime = now;
+      lastTickRefs.current.set(instance.id, tickTime);
 
-    const currentTanks = [...tanksRef.current];
-    const currentBullets = [...bulletsRef.current];
-    let newLastShotTimes = { ...lastShotTimes };
-    const keys = keysRef.current;
+      const currentTanks = [...(tanksRefs.current.get(instance.id) || [])];
+      const currentBullets = [...(bulletsRefs.current.get(instance.id) || [])];
+      let newLastShotTimes = { ...instance.lastShotTimes };
+      const keys = instance.keysRef.current;
 
-    // Update Player 1 (Blue) - Arrow keys + Space, or AI if training
-    if (currentTanks[0]?.lives > 0) {
-      let result;
-      // In person-vs-ai mode, player controls blue tank
-      if (gameMode === 'person-vs-ai') {
-        // Player controls blue tank with keyboard
-        result = updatePlayer1Tank({
-          tank: currentTanks[0],
-          tankIndex: 0,
-          keys,
-          tickTime,
-          lastShotTime: lastShotTimes.blue,
-          bullets: currentBullets,
-          mapWidth: mapData.width,
-          mapHeight: mapData.height,
-          barriers,
-          suns,
-          allTanks: currentTanks,
-        });
-      } else if (trainingManager && trainingManager.getIsTraining() && gameMode === 'ai') {
-        // AI vs AI training: use AI for blue tank too
-        // IMPORTANT: We train BOTH tanks in self-play mode for fair competition
-        // Both tanks use the same model and both contribute to training
-        result = updateAITank(
-          {
+      // Update Player 1 (Blue)
+      if (currentTanks[0]?.lives > 0) {
+        let result;
+        if (instance.gameMode === 'person-vs-ai') {
+          result = updatePlayer1Tank({
             tank: currentTanks[0],
             tankIndex: 0,
-            keys, // Not used by AI, but required by interface
-            tickTime,
-            lastShotTime: lastShotTimes.blue,
-            bullets: currentBullets,
-            mapWidth: mapData.width,
-            mapHeight: mapData.height,
-            barriers,
-            suns,
-            allTanks: currentTanks,
-          },
-          aiConfig,
-          trainingManager, // Train on blue tank too for true self-play
-          gameId ? `${gameId}-blue` : 'default-blue' // Use different gameId for blue tank
-        );
-      } else {
-        // Normal gameplay: use keyboard input
-        result = updatePlayer1Tank({
-          tank: currentTanks[0],
-          tankIndex: 0,
-          keys,
-          tickTime,
-          lastShotTime: lastShotTimes.blue,
-          bullets: currentBullets,
-          mapWidth: mapData.width,
-          mapHeight: mapData.height,
-          barriers,
-          suns,
-          allTanks: currentTanks,
-        });
-      }
-      currentTanks[0] = result.updatedTank;
-      currentBullets.push(...result.newBullets);
-      newLastShotTimes.blue = result.lastShotTime;
-    }
-
-    // Update Player 2 (Red) - WASD + Q or AI
-    if (currentTanks[1]?.lives > 0) {
-      let result;
-      if (gameMode === 'ai' || gameMode === 'person-vs-ai') {
-        // Use AI to control red tank (in both AI mode and person-vs-ai mode)
-        result = updateAITank(
-          {
-            tank: currentTanks[1],
-            tankIndex: 1,
-            keys, // Not used by AI, but required by interface
-            tickTime,
-            lastShotTime: lastShotTimes.red,
-            bullets: currentBullets,
-            mapWidth: mapData.width,
-            mapHeight: mapData.height,
-            barriers,
-            suns,
-            allTanks: currentTanks,
-          },
-          aiConfig,
-          trainingManager, // Always train on red tank (AI) in person-vs-ai mode
-          gameId
-        );
-      } else {
-        // This should never happen - all games are either AI or person-vs-ai
-        // Fallback to AI if somehow we get here
-        result = updateAITank(
-          {
-            tank: currentTanks[1],
-            tankIndex: 1,
             keys,
             tickTime,
-            lastShotTime: lastShotTimes.red,
+            lastShotTime: instance.lastShotTimes.blue,
             bullets: currentBullets,
             mapWidth: mapData.width,
             mapHeight: mapData.height,
             barriers,
             suns,
             allTanks: currentTanks,
-          },
-          aiConfig,
-          trainingManager,
-          gameId
-        );
+          });
+        } else if (trainingManager && trainingManager.getIsTraining() && instance.gameMode === 'ai') {
+          result = updateAITank(
+            {
+              tank: currentTanks[0],
+              tankIndex: 0,
+              keys,
+              tickTime,
+              lastShotTime: instance.lastShotTimes.blue,
+              bullets: currentBullets,
+              mapWidth: mapData.width,
+              mapHeight: mapData.height,
+              barriers,
+              suns,
+              allTanks: currentTanks,
+            },
+            aiConfig,
+            trainingManager,
+            `${instance.gameId}-blue`
+          );
+        } else {
+          result = updatePlayer1Tank({
+            tank: currentTanks[0],
+            tankIndex: 0,
+            keys,
+            tickTime,
+            lastShotTime: instance.lastShotTimes.blue,
+            bullets: currentBullets,
+            mapWidth: mapData.width,
+            mapHeight: mapData.height,
+            barriers,
+            suns,
+            allTanks: currentTanks,
+          });
+        }
+        currentTanks[0] = result.updatedTank;
+        currentBullets.push(...result.newBullets);
+        newLastShotTimes.blue = result.lastShotTime;
       }
-      currentTanks[1] = result.updatedTank;
-      currentBullets.push(...result.newBullets);
-      newLastShotTimes.red = result.lastShotTime;
-    }
 
-    // Update bullets
-    const bulletResult = updateBullets({
-      bullets: currentBullets,
-      tickTime,
-      mapWidth: mapData.width,
-      mapHeight: mapData.height,
-      barriers,
-      suns,
-      tanks: currentTanks,
-    });
+      // Update Player 2 (Red)
+      if (currentTanks[1]?.lives > 0) {
+        let result;
+        if (instance.gameMode === 'ai' || instance.gameMode === 'person-vs-ai') {
+          result = updateAITank(
+            {
+              tank: currentTanks[1],
+              tankIndex: 1,
+              keys,
+              tickTime,
+              lastShotTime: instance.lastShotTimes.red,
+              bullets: currentBullets,
+              mapWidth: mapData.width,
+              mapHeight: mapData.height,
+              barriers,
+              suns,
+              allTanks: currentTanks,
+            },
+            aiConfig,
+            trainingManager,
+            instance.gameId
+          );
+        } else {
+          result = updateAITank(
+            {
+              tank: currentTanks[1],
+              tankIndex: 1,
+              keys,
+              tickTime,
+              lastShotTime: instance.lastShotTimes.red,
+              bullets: currentBullets,
+              mapWidth: mapData.width,
+              mapHeight: mapData.height,
+              barriers,
+              suns,
+              allTanks: currentTanks,
+            },
+            aiConfig,
+            trainingManager,
+            instance.gameId
+          );
+        }
+        currentTanks[1] = result.updatedTank;
+        currentBullets.push(...result.newBullets);
+        newLastShotTimes.red = result.lastShotTime;
+      }
 
-    // Check for timeout using configured max episode time
-    const MAX_EPISODE_TIME = maxEpisodeTimeMs;
-    if (!gameOverTriggeredRef.current && episodeStartTime) {
-      const episodeElapsed = tickTime - episodeStartTime;
-      if (episodeElapsed >= MAX_EPISODE_TIME) {
-        // Game timed out - determine winner based on lives, or null if tie
-        gameOverTriggeredRef.current = true;
-        const blueTank = bulletResult.updatedTanks[0];
-        const redTank = bulletResult.updatedTanks[1];
-        
-        let winner: 'blue' | 'red' | null = null;
-        if (blueTank && redTank) {
-          if (blueTank.lives > redTank.lives) {
-            winner = 'blue';
-          } else if (redTank.lives > blueTank.lives) {
-            winner = 'red';
+      // Update bullets
+      const bulletResult = updateBullets({
+        bullets: currentBullets,
+        tickTime,
+        mapWidth: mapData.width,
+        mapHeight: mapData.height,
+        barriers,
+        suns,
+        tanks: currentTanks,
+      });
+
+      const gameOverTriggered = gameOverTriggeredRefs.current.get(instance.id) || false;
+
+      // Check for timeout
+      if (!gameOverTriggered && instance.episodeStartTime) {
+        const episodeElapsed = tickTime - instance.episodeStartTime;
+        if (episodeElapsed >= maxEpisodeTimeMs) {
+          gameOverTriggeredRefs.current.set(instance.id, true);
+          const blueTank = bulletResult.updatedTanks[0];
+          const redTank = bulletResult.updatedTanks[1];
+          
+          let winner: 'blue' | 'red' | null = null;
+          if (blueTank && redTank) {
+            if (blueTank.lives > redTank.lives) {
+              winner = 'blue';
+            } else if (redTank.lives > blueTank.lives) {
+              winner = 'red';
+            }
           }
-          // If lives are equal, winner remains null (tie)
+          
+          bulletResult.updatedBullets = [];
+          bulletResult.updatedTanks[0] = {
+            ...blueTank,
+            exploding: false,
+            explosionStartTime: undefined,
+            respawning: false,
+            respawnStartTime: undefined,
+            respawnTargetX: undefined,
+            respawnTargetY: undefined,
+            respawnTargetAngle: undefined,
+          };
+          bulletResult.updatedTanks[1] = {
+            ...redTank,
+            exploding: false,
+            explosionStartTime: undefined,
+            respawning: false,
+            respawnStartTime: undefined,
+            respawnTargetX: undefined,
+            respawnTargetY: undefined,
+            respawnTargetAngle: undefined,
+          };
+          
+          onTanksUpdate(instance.id, bulletResult.updatedTanks);
+          onBulletsUpdate(instance.id, bulletResult.updatedBullets);
+          onGameOver(instance.id, winner);
+          return;
+        }
+      }
+
+      // Check for game over (tank reached 0 lives)
+      const blueTankAfterBullets = bulletResult.updatedTanks[0];
+      const redTankAfterBullets = bulletResult.updatedTanks[1];
+      
+      if (!gameOverTriggered && blueTankAfterBullets && redTankAfterBullets) {
+        if (blueTankAfterBullets.lives <= 0 || redTankAfterBullets.lives <= 0) {
+          gameOverTriggeredRefs.current.set(instance.id, true);
+          const winner = blueTankAfterBullets.lives <= 0 ? 'red' : 'blue';
+          
+          bulletResult.updatedBullets = [];
+          bulletResult.updatedTanks[0] = {
+            ...blueTankAfterBullets,
+            exploding: false,
+            explosionStartTime: undefined,
+            respawning: false,
+            respawnStartTime: undefined,
+            respawnTargetX: undefined,
+            respawnTargetY: undefined,
+            respawnTargetAngle: undefined,
+          };
+          bulletResult.updatedTanks[1] = {
+            ...redTankAfterBullets,
+            exploding: false,
+            explosionStartTime: undefined,
+            respawning: false,
+            respawnStartTime: undefined,
+            respawnTargetX: undefined,
+            respawnTargetY: undefined,
+            respawnTargetAngle: undefined,
+          };
+          
+          onTanksUpdate(instance.id, bulletResult.updatedTanks);
+          onBulletsUpdate(instance.id, bulletResult.updatedBullets);
+          onGameOver(instance.id, winner);
+          return;
+        }
+      }
+
+      // Handle respawning
+      for (let i = 0; i < bulletResult.updatedTanks.length; i++) {
+        const tank = bulletResult.updatedTanks[i];
+        const originalTank = currentTanks[i];
+        
+        if (tank.lives < originalTank.lives && tank.lives > 0) {
+          const tankColor = tank.color;
+          bulletResult.updatedBullets = bulletResult.updatedBullets.filter(
+            bullet => bullet.owner !== tankColor
+          );
+          
+          const spawn = generateRandomSpawnPosition(
+            mapData,
+            barriers,
+            bulletResult.updatedTanks,
+            suns,
+            i === 0 ? bulletResult.updatedTanks[1] : bulletResult.updatedTanks[0]
+              ? { x: bulletResult.updatedTanks[i === 0 ? 1 : 0].x, y: bulletResult.updatedTanks[i === 0 ? 1 : 0].y }
+              : undefined
+          );
+          
+          bulletResult.updatedTanks[i] = {
+            ...tank,
+            x: spawn.x,
+            y: spawn.y,
+            angle: spawn.angle,
+            exploding: false,
+            explosionStartTime: undefined,
+            respawning: false,
+            respawnStartTime: undefined,
+            respawnTargetX: undefined,
+            respawnTargetY: undefined,
+            respawnTargetAngle: undefined,
+          };
         }
         
-        // Clear all bullets
-        bulletResult.updatedBullets = [];
-        
-        // Clear respawn states
-        bulletResult.updatedTanks[0] = {
-          ...blueTank,
-          exploding: false,
-          explosionStartTime: undefined,
-          respawning: false,
-          respawnStartTime: undefined,
-          respawnTargetX: undefined,
-          respawnTargetY: undefined,
-          respawnTargetAngle: undefined,
-        };
-        bulletResult.updatedTanks[1] = {
-          ...redTank,
-          exploding: false,
-          explosionStartTime: undefined,
-          respawning: false,
-          respawnStartTime: undefined,
-          respawnTargetX: undefined,
-          respawnTargetY: undefined,
-          respawnTargetAngle: undefined,
-        };
-        
-        // Update state and trigger game over with timeout
-        onTanksUpdate(bulletResult.updatedTanks);
-        onBulletsUpdate(bulletResult.updatedBullets);
-        onGameOver(winner);
-        return;
+        if (tank.exploding || tank.respawning) {
+          bulletResult.updatedTanks[i] = {
+            ...tank,
+            exploding: false,
+            explosionStartTime: undefined,
+            respawning: false,
+            respawnStartTime: undefined,
+            respawnTargetX: undefined,
+            respawnTargetY: undefined,
+            respawnTargetAngle: undefined,
+          };
+        }
       }
-    }
 
-    // Check for game over immediately after bullet updates (before respawn logic)
-    // This ensures we stop the game as soon as a tank reaches 0 lives
-    const blueTankAfterBullets = bulletResult.updatedTanks[0];
-    const redTankAfterBullets = bulletResult.updatedTanks[1];
-    
-    if (!gameOverTriggeredRef.current && blueTankAfterBullets && redTankAfterBullets) {
-      if (blueTankAfterBullets.lives <= 0 || redTankAfterBullets.lives <= 0) {
-        // A tank reached 0 lives - trigger game over immediately
-        gameOverTriggeredRef.current = true;
-        const winner = blueTankAfterBullets.lives <= 0 ? 'red' : 'blue';
-        
-        // Clear all bullets
-        bulletResult.updatedBullets = [];
-        
-        // Clear respawn states
-        bulletResult.updatedTanks[0] = {
-          ...blueTankAfterBullets,
-          exploding: false,
-          explosionStartTime: undefined,
-          respawning: false,
-          respawnStartTime: undefined,
-          respawnTargetX: undefined,
-          respawnTargetY: undefined,
-          respawnTargetAngle: undefined,
-        };
-        bulletResult.updatedTanks[1] = {
-          ...redTankAfterBullets,
-          exploding: false,
-          explosionStartTime: undefined,
-          respawning: false,
-          respawnStartTime: undefined,
-          respawnTargetX: undefined,
-          respawnTargetY: undefined,
-          respawnTargetAngle: undefined,
-        };
-        
-        // Update state and trigger game over
-        onTanksUpdate(bulletResult.updatedTanks);
-        onBulletsUpdate(bulletResult.updatedBullets);
-        onGameOver(winner);
-        return;
+      if (!gameOverTriggered) {
+        onTanksUpdate(instance.id, bulletResult.updatedTanks);
+        onBulletsUpdate(instance.id, bulletResult.updatedBullets);
+        onLastShotTimesUpdate(instance.id, newLastShotTimes);
       }
-    }
-
-    // Check if any tanks were hit and need respawning
-    // No animations - respawn immediately
-    for (let i = 0; i < bulletResult.updatedTanks.length; i++) {
-      const tank = bulletResult.updatedTanks[i];
-      const originalTank = currentTanks[i];
-      
-      // If tank lost a life, respawn immediately (no animation)
-      if (tank.lives < originalTank.lives && tank.lives > 0) {
-        // Remove all bullets from the dead tank to prevent immediate respawn death
-        const tankColor = tank.color;
-        bulletResult.updatedBullets = bulletResult.updatedBullets.filter(
-          bullet => bullet.owner !== tankColor
-        );
-        
-        // Respawn immediately at new position
-        const spawn = generateRandomSpawnPosition(
-          mapData,
-          barriers,
-          bulletResult.updatedTanks,
-          suns,
-          i === 0 ? bulletResult.updatedTanks[1] : bulletResult.updatedTanks[0]
-            ? { x: bulletResult.updatedTanks[i === 0 ? 1 : 0].x, y: bulletResult.updatedTanks[i === 0 ? 1 : 0].y }
-            : undefined
-        );
-        
-        bulletResult.updatedTanks[i] = {
-          ...tank,
-          x: spawn.x,
-          y: spawn.y,
-          angle: spawn.angle,
-          exploding: false,
-          explosionStartTime: undefined,
-          respawning: false,
-          respawnStartTime: undefined,
-          respawnTargetX: undefined,
-          respawnTargetY: undefined,
-          respawnTargetAngle: undefined,
-        };
-      }
-      
-      // Clear any animation states (no animations)
-      if (tank.exploding || tank.respawning) {
-        bulletResult.updatedTanks[i] = {
-          ...tank,
-          exploding: false,
-          explosionStartTime: undefined,
-          respawning: false,
-          respawnStartTime: undefined,
-          respawnTargetX: undefined,
-          respawnTargetY: undefined,
-          respawnTargetAngle: undefined,
-        };
-      }
-    }
-
-    // Don't continue game updates if game over has been triggered
-    // (Game over is checked earlier, right after bullet updates)
-    if (gameOverTriggeredRef.current) {
-      return;
-    }
-
-    onTanksUpdate(bulletResult.updatedTanks);
-    onBulletsUpdate(bulletResult.updatedBullets);
-    onLastShotTimesUpdate(newLastShotTimes);
+    });
   }, [
-    isPaused,
-    keysRef,
     mapData,
     barriers,
     suns,
-    lastShotTimes,
-    gameMode,
     aiConfig,
+    trainingManager,
+    maxEpisodeTimeMs,
     onTanksUpdate,
     onBulletsUpdate,
     onLastShotTimesUpdate,
@@ -403,4 +402,3 @@ export function useGameLogic({
 
   return { gameTick };
 }
-

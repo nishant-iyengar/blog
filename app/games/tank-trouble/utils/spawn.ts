@@ -19,6 +19,17 @@ export function generateRandomSpawnPosition(
     const x = padding + Math.random() * (mapData.width - TANK_SIZE - padding * 2);
     const y = padding + Math.random() * (mapData.height - TANK_SIZE - padding * 2);
     
+    // Check if position is too close to exclude position (if provided)
+    if (excludePosition) {
+      const distance = Math.sqrt(
+        Math.pow(x - excludePosition.x, 2) + Math.pow(y - excludePosition.y, 2)
+      );
+      // Require at least 50 pixels distance from exclude position
+      if (distance < 50) {
+        continue;
+      }
+    }
+    
     // Check if position is valid (no barrier or sun collision)
     if (isValidTankPosition(x, y, mapData.width, mapData.height, barriers, tanks, suns)) {
       // Tanks can overlap, so no distance check needed
@@ -30,11 +41,42 @@ export function generateRandomSpawnPosition(
   
   // Fallback to default spawn points if random generation fails
   const spawnPoints = mapData.spawnPoints;
-  const fallbackIndex = Math.floor(Math.random() * spawnPoints.length);
+  if (!spawnPoints || spawnPoints.length === 0) {
+    // Last resort: return a safe default position if spawn points are missing
+    console.warn('No spawn points available, using default position');
+    return {
+      x: padding,
+      y: padding,
+      angle: 0,
+    };
+  }
+  
+  // Try each spawn point until we find a valid one
+  for (const spawnPoint of spawnPoints) {
+    if (isValidTankPosition(spawnPoint.x, spawnPoint.y, mapData.width, mapData.height, barriers, tanks, suns)) {
+      // Check exclude position if provided
+      if (excludePosition) {
+        const distance = Math.sqrt(
+          Math.pow(spawnPoint.x - excludePosition.x, 2) + Math.pow(spawnPoint.y - excludePosition.y, 2)
+        );
+        if (distance < 50) {
+          continue;
+        }
+      }
+      return {
+        x: spawnPoint.x,
+        y: spawnPoint.y,
+        angle: spawnPoint.angle,
+      };
+    }
+  }
+  
+  // If all spawn points are invalid, use the first one anyway (last resort)
+  console.warn('All spawn points invalid, using first spawn point');
   return {
-    x: spawnPoints[fallbackIndex].x,
-    y: spawnPoints[fallbackIndex].y,
-    angle: spawnPoints[fallbackIndex].angle,
+    x: spawnPoints[0].x,
+    y: spawnPoints[0].y,
+    angle: spawnPoints[0].angle,
   };
 }
 
@@ -48,7 +90,34 @@ export function getInitialSpawnPositions(
   suns: Sun[]
 ): Tank[] {
   const blueSpawn = generateRandomSpawnPosition(mapData, barriers, [], suns);
-  const redSpawn = generateRandomSpawnPosition(mapData, barriers, [], suns, blueSpawn);
+  
+  // Validate blue spawn position
+  if (typeof blueSpawn.x !== 'number' || typeof blueSpawn.y !== 'number' || isNaN(blueSpawn.x) || isNaN(blueSpawn.y)) {
+    console.error('Invalid blue spawn position:', blueSpawn);
+    // Fallback to safe default
+    blueSpawn.x = 90;
+    blueSpawn.y = 90;
+    blueSpawn.angle = 0;
+  }
+  
+  // Create blue tank object to pass to red spawn generation (for collision checking)
+  const blueTank: Tank = {
+    x: blueSpawn.x,
+    y: blueSpawn.y,
+    angle: blueSpawn.angle,
+    lives: GAME_CONFIG.tank.lives,
+    color: 'blue',
+  };
+  const redSpawn = generateRandomSpawnPosition(mapData, barriers, [blueTank], suns, blueSpawn);
+  
+  // Validate red spawn position
+  if (typeof redSpawn.x !== 'number' || typeof redSpawn.y !== 'number' || isNaN(redSpawn.x) || isNaN(redSpawn.y)) {
+    console.error('Invalid red spawn position:', redSpawn);
+    // Fallback to safe default (different from blue)
+    redSpawn.x = mapData.spawnPoints && mapData.spawnPoints.length > 1 ? mapData.spawnPoints[1].x : 390;
+    redSpawn.y = mapData.spawnPoints && mapData.spawnPoints.length > 1 ? mapData.spawnPoints[1].y : 270;
+    redSpawn.angle = mapData.spawnPoints && mapData.spawnPoints.length > 1 ? mapData.spawnPoints[1].angle : 180;
+  }
   
   return [
     { 

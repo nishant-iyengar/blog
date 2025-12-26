@@ -36,7 +36,23 @@ export function updateAITank(
   } = params;
 
   // Find enemy tank (assumes AI is red/player 2, enemy is blue/player 1)
-  const enemyTank = allTanks.find((t) => t.color !== tank.color) || allTanks[0];
+  // Defensive: ensure we have a valid enemy tank
+  let enemyTank = allTanks.find((t) => t && t.color !== tank.color && t.lives > 0);
+  if (!enemyTank) {
+    // Fallback: try to find any tank that's not this one
+    enemyTank = allTanks.find((t) => t && t !== tank);
+  }
+  // If still no enemy tank, use a dummy tank at center of map (shouldn't happen in normal gameplay)
+  if (!enemyTank) {
+    console.warn('No valid enemy tank found, using dummy tank');
+    enemyTank = {
+      x: mapWidth / 2,
+      y: mapHeight / 2,
+      angle: 0,
+      lives: 3,
+      color: tank.color === 'blue' ? 'red' : 'blue',
+    };
+  }
 
   // Create AI context
   const context: AIContext = {
