@@ -1,4 +1,4 @@
-import type { Sun, Tank } from '@/app/games/tank-trouble/types';
+import type { Sun, Tank, Barrier } from '@/app/games/tank-trouble/types';
 import type { ShotOpportunity } from './types';
 import { predictBulletPath } from './prediction';
 import { BULLET_SPEED, TANK_SIZE, GAME_CONFIG, TICK_INTERVAL } from '@/app/games/tank-trouble/config';
@@ -12,7 +12,7 @@ export function findSunLeveragedShot(
   shooter: Tank,
   target: { x: number; y: number },
   suns: Sun[],
-  barriers: any[],
+  barriers: Barrier[],
   mapWidth: number,
   mapHeight: number,
   sunSkill: number
@@ -150,7 +150,7 @@ export function calculateOptimalShotAngle(
   shooter: Tank,
   target: { x: number; y: number },
   suns: Sun[],
-  barriers: any[],
+  barriers: Barrier[],
   mapWidth: number,
   mapHeight: number,
   sunSkill: number

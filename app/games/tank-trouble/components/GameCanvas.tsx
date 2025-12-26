@@ -148,6 +148,7 @@ export function GameCanvas({
       .filter(tank => tank && tank.lives !== undefined && tank.x !== undefined && tank.y !== undefined && tank.color)
       .slice(0, 2); // Only draw first 2 tanks to prevent flickering from stale data
     
+    
     for (const tank of validTanks) {
       // Skip tanks with 0 lives or invalid positions
       if (tank.lives <= 0 || tank.x === undefined || tank.y === undefined) continue;
@@ -288,6 +289,21 @@ export function GameCanvas({
       ctx.textAlign = 'center';
       ctx.fillText('PAUSED', width / 2, height / 2);
       ctx.textAlign = 'left'; // Reset alignment
+    }
+    
+    // DEBUG: Visual debugging overlay - show tank positions as text
+    if (process.env.NODE_ENV === 'development') {
+      ctx.fillStyle = '#FFFF00';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'left';
+      validTanks.forEach((tank, idx) => {
+        const debugText = `${tank.color.toUpperCase()}: (${Math.round(tank.x)}, ${Math.round(tank.y)})`;
+        ctx.fillText(debugText, 5, height - 20 + idx * 10);
+      });
+      if (tanks.length !== 2) {
+        ctx.fillStyle = '#FF0000';
+        ctx.fillText(`WARNING: ${tanks.length} tanks (expected 2)`, 5, height - 5);
+      }
     }
   }, [width, height, tanks, bullets, barriers, suns, isPaused, tankImages, gameOverWinner]);
 

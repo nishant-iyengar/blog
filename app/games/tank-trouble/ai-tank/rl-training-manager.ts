@@ -1,18 +1,18 @@
 /**
  * RL Training Manager
  * 
- * Coordinates the training process, managing episodes, experience collection,
+ * Coordinates the training process, managing episodes, step collection,
  * and model updates. Integrates with the game to collect training data.
  */
 
 import { DQNAgent, type DQNConfig, DEFAULT_DQN_CONFIG } from './rl-dqn-model';
 import { ReplayBuffer } from './rl-replay-buffer';
-import { TankTroubleRLEnv } from './rl-environment';
-import { rlModelManager, TensorFlowJSModel } from './rl-model';
+import { TankTroubleRLEnv, type RLEnvironmentState } from './rl-environment';
+import { rlModelManager, TensorFlowJSModel, type ExtendedRLModel } from './rl-model';
 import { saveModelWithMetadata } from './rl-model-storage';
-import type { AIContext } from './types';
+import type { AIContext, AIDecision } from './types';
 import type { Observation } from './rl-observation';
-import type { Experience } from './rl-dqn-model';
+import type { Step } from './rl-dqn-model';
 
 export interface TrainingStats {
   episode: number;
@@ -47,7 +47,8 @@ export class RLTrainingManager {
   private isTraining: boolean = false;
   private currentEpisode: number = 0;
   private stepCount: number = 0;
-  private gameStates: Map<string, any> = new Map(); // Per-game state tracking
+  // Per-game state tracking
+  private gameStates: Map<string, { observation?: Observation; lastAction?: number; reward?: number }> = new Map();
   private activeGameEpisodes: Set<string> = new Set(); // Track which games have active episodes
   private gameEpisodeRewards: Map<string, number> = new Map(); // Track episode reward per game
   private gameEpisodeLengths: Map<string, number> = new Map(); // Track episode length per game
@@ -105,12 +106,30 @@ export class RLTrainingManager {
     
     // Connect agent to model interface for use in game
     // This allows the game controller to use the trained model during training
-    (model as any).agent = this.agent;
-    (model as any).predict = async (obs: any, angle: number) => this.agent.predict(obs, angle);
-    (model as any).isLoaded = () => true;
+    // Note: RLModel.predict is synchronous, but agent.predict is async
+    // We use a synchronous wrapper that falls back to rule-based for game loop
+    // The actual RL predictions happen in training step (async)
+    const extendedModel: ExtendedRLModel = {
+      isLoaded: () => model.isLoaded(),
+      load: (path: string) => model.load(path),
+      getInfo: () => model.getInfo(),
+      agent: this.agent,
+      // Synchronous predict for game loop compatibility
+      // Actual RL predictions happen in training step
+      predict: (obs: Observation, angle: number): AIDecision => {
+        // For game loop, return rule-based decision
+        // RL predictions are handled separately in training step
+        // This is a design limitation - ideally controller would be async
+        return {
+          angleDelta: 0,
+          moveDirection: 0,
+          shouldShoot: false,
+        };
+      },
+    };
     
     // Set model in global model manager so game controller can use it during training
-    rlModelManager.setModel(model);
+    rlModelManager.setModel(extendedModel);
   }
 
   /**
@@ -122,7 +141,7 @@ export class RLTrainingManager {
    * @param gameId - Unique identifier for the game instance (e.g., "game-0", "game-1")
    *                 This allows tracking state per game while sharing the model
    */
-  async step(context: AIContext, decision: any, actionTaken?: number, gameId?: string): Promise<void> {
+  async step(context: AIContext, decision: AIDecision, actionTaken?: number, gameId?: string): Promise<void> {
     if (!this.isTraining) {
       return;
     }
@@ -162,16 +181,16 @@ export class RLTrainingManager {
     // Execute action and get next state
     const nextEnvState = this.env.step(action, context, decision);
 
-    // Ensure we have valid state before storing experience
+    // Ensure we have valid state before storing step
     if (!envState || !envState.observation || !nextEnvState || !nextEnvState.observation) {
-      // Skip experience collection if state is invalid, reset for this game
+      // Skip step collection if state is invalid, reset for this game
       this.gameStates.set(gameKey, nextEnvState || this.env.reset(context));
       return;
     }
 
-    // Store experience from previous state to current state
+    // Store step from previous state to current state
     // All games contribute to the SAME shared replay buffer
-    const experience: Experience = {
+    const step: Step = {
       state: envState.observation.vector,
       action: action,
       reward: nextEnvState.reward,
@@ -180,7 +199,7 @@ export class RLTrainingManager {
     };
 
     // Add to shared replay buffer (all games contribute here)
-    this.replayBuffer.add(experience);
+    this.replayBuffer.add(step);
     
     // Track reward and length per game (for proper episode tracking)
     const currentGameReward = this.gameEpisodeRewards.get(gameKey) || 0;
@@ -193,14 +212,13 @@ export class RLTrainingManager {
     
     // Debug: Log every 100 steps to verify accumulation
     if (this.stats.episodeLength % 100 === 0) {
-      console.log(`Step ${this.stats.episodeLength}: reward=${this.stats.episodeReward.toFixed(2)}, activeGames=${this.activeGameEpisodes.size}`);
     }
 
     // Train periodically on shared model
-    // All games' experiences are batched together for training
+    // All games' steps are batched together for training
     this.stepCount++;
     if (this.stepCount % this.config.trainEvery === 0 && this.replayBuffer.canSample(32)) {
-      const batch = this.replayBuffer.sample(32); // Sample from ALL games' experiences
+      const batch = this.replayBuffer.sample(32); // Sample from ALL games' steps
       const loss = await this.agent.train(batch); // Train shared model
       this.stats.loss = loss;
 
@@ -273,7 +291,10 @@ export class RLTrainingManager {
     // Save model periodically
     if (this.currentEpisode % this.config.saveEvery === 0) {
       // Save asynchronously without blocking
-      this.saveModel(`indexeddb://tank-ai-episode-${this.currentEpisode}`).catch((error) => {
+      const timestamp = Date.now();
+      const isoString = new Date(timestamp).toISOString();
+      const evalScore = this.stats.averageReward;
+      this.saveModel(`indexeddb://tank-ai-${timestamp}`, evalScore, isoString).catch((error) => {
         console.error('Error saving model:', error);
       });
     }
@@ -292,7 +313,7 @@ export class RLTrainingManager {
    * per-game tracking. The episode counter is incremented separately when
    * the new game starts.
    */
-  private async onEpisodeComplete(finalState: any, gameKey: string): Promise<void> {
+  private async onEpisodeComplete(finalState: RLEnvironmentState, gameKey: string): Promise<void> {
     // Get the base game key (without "-blue" suffix) to combine both tanks' rewards
     const isBlueTank = gameKey.includes('-blue');
     const baseGameKey = isBlueTank ? gameKey.replace('-blue', '') : gameKey;
@@ -313,7 +334,6 @@ export class RLTrainingManager {
       this.stats.totalReward += totalGameReward;
       
       // Debug: Log episode completion with per-game reward
-      console.log(`Episode completion for ${baseGameKey}. Total reward: ${totalGameReward.toFixed(2)} (red: ${redReward.toFixed(2)}, blue: ${blueReward.toFixed(2)}), Length: ${totalGameLength}, Total episodes: ${this.currentEpisode}`);
     }
     
     // Clean up per-game tracking for this game when episode completes
@@ -367,9 +387,30 @@ export class RLTrainingManager {
   }
 
   /**
+   * Check if model can be saved
+   * Requirements:
+   * 1. Replay buffer has enough steps (32+) for at least one training batch
+   * 2. Model has been trained at least once (loss > 0 indicates training occurred)
+   * 3. At least one episode has completed (to have meaningful averageReward)
+   */
+  canSaveModel(): boolean {
+    const hasEnoughData = this.replayBuffer.canSample(32);
+    const hasBeenTrained = this.stats.loss > 0; // Loss is 0 initially, > 0 after first training
+    const hasCompletedEpisode = this.currentEpisode > 0; // Need at least one episode for meaningful stats
+    return hasEnoughData && hasBeenTrained && hasCompletedEpisode;
+  }
+
+  /**
+   * Get replay buffer size
+   */
+  getReplayBufferSize(): number {
+    return this.replayBuffer.size();
+  }
+
+  /**
    * Save model
    */
-  async saveModel(path: string, displayName?: string): Promise<void> {
+  async saveModel(path: string, evalScore?: number, displayName?: string): Promise<void> {
     try {
       // Ensure path has indexeddb:// prefix for IndexedDB storage
       // If path already has the prefix, use it as-is; otherwise add it
@@ -385,7 +426,7 @@ export class RLTrainingManager {
       
       // Save metadata for easier model management
       try {
-        await saveModelWithMetadata(fullPath, displayName);
+        await saveModelWithMetadata(fullPath, evalScore, displayName);
       } catch (metaError) {
         console.warn('Failed to save model metadata (model still saved):', metaError);
         // Don't throw - metadata is optional

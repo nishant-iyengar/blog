@@ -1,14 +1,14 @@
 /**
- * Experience Replay Buffer
+ * Step Replay Buffer
  * 
- * Stores experiences for training the DQN agent.
+ * Stores steps for training the DQN agent.
  * Uses a circular buffer to maintain a fixed-size memory.
  */
 
-import type { Experience } from './rl-dqn-model';
+import type { Step } from './rl-dqn-model';
 
 export class ReplayBuffer {
-  private buffer: Experience[] = [];
+  private buffer: Step[] = [];
   private maxSize: number;
   private currentIndex: number = 0;
 
@@ -17,39 +17,39 @@ export class ReplayBuffer {
   }
 
   /**
-   * Add experience to buffer
+   * Add step to buffer
    */
-  add(experience: Experience): void {
+  add(step: Step): void {
     if (this.buffer.length < this.maxSize) {
-      this.buffer.push(experience);
+      this.buffer.push(step);
     } else {
-      // Overwrite oldest experience (circular buffer)
-      this.buffer[this.currentIndex] = experience;
+      // Overwrite oldest step (circular buffer)
+      this.buffer[this.currentIndex] = step;
       this.currentIndex = (this.currentIndex + 1) % this.maxSize;
     }
   }
 
   /**
-   * Add multiple experiences
+   * Add multiple steps
    */
-  addBatch(experiences: Experience[]): void {
-    for (const exp of experiences) {
-      this.add(exp);
+  addBatch(steps: Step[]): void {
+    for (const step of steps) {
+      this.add(step);
     }
   }
 
   /**
-   * Sample a batch of experiences
+   * Sample a batch of steps
    */
-  sample(batchSize: number): Experience[] {
+  sample(batchSize: number): Step[] {
     if (this.buffer.length < batchSize) {
-      // Return all experiences if buffer is smaller than batch size
+      // Return all steps if buffer is smaller than batch size
       return [...this.buffer];
     }
 
     // Random sampling
     const indices: number[] = [];
-    const sampled: Experience[] = [];
+    const sampled: Step[] = [];
 
     while (indices.length < batchSize) {
       const index = Math.floor(Math.random() * this.buffer.length);
@@ -85,9 +85,9 @@ export class ReplayBuffer {
   }
 
   /**
-   * Get all experiences (for debugging)
+   * Get all steps (for debugging)
    */
-  getAll(): Experience[] {
+  getAll(): Step[] {
     return [...this.buffer];
   }
 }

@@ -12,12 +12,43 @@ export function generateRandomSpawnPosition(
   suns: Sun[],
   excludePosition?: { x: number; y: number }
 ): SpawnPosition {
+  if (!mapData || typeof mapData.width !== 'number' || typeof mapData.height !== 'number') {
+    // Fallback to safe defaults - use type guard utility for validation
+    return {
+      x: 90,
+      y: 90,
+      angle: 0,
+    };
+  }
+  
   const maxAttempts = 100;
   const padding = 8; // Minimum distance from edges (16 * 0.5 = 8)
   
+  // Validate map dimensions
+  const mapWidth = mapData.width;
+  const mapHeight = mapData.height;
+  const availableWidth = mapWidth - TANK_SIZE - padding * 2;
+  const availableHeight = mapHeight - TANK_SIZE - padding * 2;
+  
+  if (isNaN(availableWidth) || isNaN(availableHeight) || availableWidth <= 0 || availableHeight <= 0) {
+    // Fallback to spawn points
+    if (mapData.spawnPoints && mapData.spawnPoints.length > 0) {
+      return {
+        x: mapData.spawnPoints[0].x,
+        y: mapData.spawnPoints[0].y,
+        angle: mapData.spawnPoints[0].angle,
+      };
+    }
+    return {
+      x: padding,
+      y: padding,
+      angle: 0,
+    };
+  }
+  
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const x = padding + Math.random() * (mapData.width - TANK_SIZE - padding * 2);
-    const y = padding + Math.random() * (mapData.height - TANK_SIZE - padding * 2);
+    const x = padding + Math.random() * availableWidth;
+    const y = padding + Math.random() * availableHeight;
     
     // Check if position is too close to exclude position (if provided)
     if (excludePosition) {
@@ -43,7 +74,6 @@ export function generateRandomSpawnPosition(
   const spawnPoints = mapData.spawnPoints;
   if (!spawnPoints || spawnPoints.length === 0) {
     // Last resort: return a safe default position if spawn points are missing
-    console.warn('No spawn points available, using default position');
     return {
       x: padding,
       y: padding,
@@ -72,7 +102,6 @@ export function generateRandomSpawnPosition(
   }
   
   // If all spawn points are invalid, use the first one anyway (last resort)
-  console.warn('All spawn points invalid, using first spawn point');
   return {
     x: spawnPoints[0].x,
     y: spawnPoints[0].y,
@@ -89,11 +118,11 @@ export function getInitialSpawnPositions(
   barriers: Array<{ x: number; y: number; width: number; height: number }>,
   suns: Sun[]
 ): Tank[] {
-  const blueSpawn = generateRandomSpawnPosition(mapData, barriers, [], suns);
+  
+  const blueSpawn = generateRandomSpawnPosition(mapData, barriers || [], [], suns || []);
   
   // Validate blue spawn position
   if (typeof blueSpawn.x !== 'number' || typeof blueSpawn.y !== 'number' || isNaN(blueSpawn.x) || isNaN(blueSpawn.y)) {
-    console.error('Invalid blue spawn position:', blueSpawn);
     // Fallback to safe default
     blueSpawn.x = 90;
     blueSpawn.y = 90;
@@ -112,7 +141,6 @@ export function getInitialSpawnPositions(
   
   // Validate red spawn position
   if (typeof redSpawn.x !== 'number' || typeof redSpawn.y !== 'number' || isNaN(redSpawn.x) || isNaN(redSpawn.y)) {
-    console.error('Invalid red spawn position:', redSpawn);
     // Fallback to safe default (different from blue)
     redSpawn.x = mapData.spawnPoints && mapData.spawnPoints.length > 1 ? mapData.spawnPoints[1].x : 390;
     redSpawn.y = mapData.spawnPoints && mapData.spawnPoints.length > 1 ? mapData.spawnPoints[1].y : 270;

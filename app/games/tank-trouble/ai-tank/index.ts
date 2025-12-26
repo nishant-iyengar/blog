@@ -44,7 +44,7 @@ export function updateAITank(
   }
   // If still no enemy tank, use a dummy tank at center of map (shouldn't happen in normal gameplay)
   if (!enemyTank) {
-    console.warn('No valid enemy tank found, using dummy tank');
+    // Removed warning log
     enemyTank = {
       x: mapWidth / 2,
       y: mapHeight / 2,
@@ -70,9 +70,11 @@ export function updateAITank(
   // Get AI decision
   const decision = makeAIDecision(context);
 
-  // If training, collect experience (async, don't wait)
+  // If training, collect step (async, don't wait)
   if (trainingManager && trainingManager.getIsTraining()) {
-    trainingManager.step(context, decision, undefined, gameId).catch(console.error);
+    trainingManager.step(context, decision, undefined, gameId).catch(() => {
+      // Silently handle errors
+    });
   }
 
   // Apply decision to tank

@@ -28,7 +28,7 @@ export function TrainingPanel({ onTrainingStateChange, training: externalTrainin
   const internalTraining = useRLTraining({
     ...config,
     onEpisodeComplete: (episodeStats) => {
-      console.log('Episode complete:', episodeStats);
+      // Removed debug log
     },
   });
 
@@ -46,9 +46,29 @@ export function TrainingPanel({ onTrainingStateChange, training: externalTrainin
   };
 
   const handleSave = async () => {
+    if (!training.canSaveModel()) {
+      const bufferSize = training.getReplayBufferSize();
+      const hasTrained = (training.stats?.loss ?? 0) > 0;
+      const hasEpisodes = (training.stats?.episode ?? 0) > 0;
+      
+      let message = 'Cannot save model yet. Requirements:\n';
+      if (bufferSize < 32) {
+        message += `- Need at least 32 steps (current: ${bufferSize})\n`;
+      }
+      if (!hasTrained) {
+        message += '- Model must be trained at least once (wait for training to occur)\n';
+      }
+      if (!hasEpisodes) {
+        message += '- Need at least one completed episode\n';
+      }
+      alert(message);
+      return;
+    }
     const timestamp = Date.now();
-    await training.saveModel(`indexeddb://tank-ai-${timestamp}`);
-    alert(`Model saved! (tank-ai-${timestamp})`);
+    const isoString = new Date(timestamp).toISOString();
+    const evalScore = training.stats?.averageReward;
+    await training.saveModel(`indexeddb://tank-ai-${timestamp}`, evalScore, isoString);
+    alert(`Model saved! (${isoString})`);
   };
 
   if (!training.isInitialized) {
@@ -84,8 +104,20 @@ export function TrainingPanel({ onTrainingStateChange, training: externalTrainin
         )}
         <button
           onClick={handleSave}
-          style={{ backgroundColor: '#bfdbfe' }}
-          className="px-4 py-2 bg-blue-200 text-blue-700 rounded hover:bg-blue-300 font-medium"
+          disabled={!training.canSaveModel()}
+          style={{ 
+            backgroundColor: !training.canSaveModel() ? '#d1d5db' : '#bfdbfe',
+            opacity: !training.canSaveModel() ? 0.6 : 1,
+            cursor: !training.canSaveModel() ? 'not-allowed' : 'pointer',
+          }}
+          className={`px-4 py-2 rounded font-medium ${
+            !training.canSaveModel()
+              ? 'bg-gray-300 text-gray-500'
+              : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
+          }`}
+          title={!training.canSaveModel() 
+            ? `Requirements: 32+ steps, model trained (loss > 0), and at least 1 episode completed`
+            : 'Save current model (creates new model, does not overwrite)'}
         >
           Save Model
         </button>

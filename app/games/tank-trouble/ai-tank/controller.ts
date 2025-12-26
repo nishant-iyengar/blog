@@ -45,7 +45,7 @@ export function makeAIDecision(context: AIContext): AIDecision {
       const decision = model.predict(observation, aiTank.angle);
       return decision;
     } catch (error) {
-      console.warn('RL model prediction failed, falling back to rule-based:', error);
+      // Removed warning log
       // Fall through to rule-based AI
     }
   }

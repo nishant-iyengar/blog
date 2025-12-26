@@ -7,6 +7,7 @@
 
 import type { AIDecision } from './types';
 import { ROTATION_SPEED } from '@/app/games/tank-trouble/config';
+import { assertType } from '@/lib/type-guards';
 
 /**
  * Discrete action space
@@ -61,7 +62,13 @@ export function actionToDecision(
   }
 
   // Handle discrete actions
-  const discreteAction = action as DiscreteAction;
+  // Type guard: ensure action is a valid DiscreteAction enum value
+  const discreteAction = assertType(
+    action,
+    (val): val is DiscreteAction =>
+      typeof val === 'number' && val >= 0 && val < NUM_DISCRETE_ACTIONS,
+    `Invalid discrete action: ${action}`
+  );
   
   let angleDelta = 0;
   let moveDirection = 0;
@@ -133,7 +140,7 @@ export function actionToDecision(
       break;
 
     default:
-      console.warn(`Unknown action: ${action}`);
+      // Removed warning log
   }
 
   return {

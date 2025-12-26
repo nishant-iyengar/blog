@@ -1,4 +1,4 @@
-import type { Bullet, Tank, Sun } from '@/app/games/tank-trouble/types';
+import type { Bullet, Tank, Sun, Barrier } from '@/app/games/tank-trouble/types';
 import type { Threat } from './types';
 import { predictBulletPath } from './prediction';
 import { TANK_SIZE, TANK_COLLISION_SIZE } from '@/app/games/tank-trouble/config';
@@ -10,7 +10,7 @@ export function assessThreats(
   tank: Tank,
   bullets: Bullet[],
   suns: Sun[],
-  barriers: any[],
+  barriers: Barrier[],
   mapWidth: number,
   mapHeight: number,
   maxPredictionTime: number
@@ -99,7 +99,7 @@ export function isPositionSafe(
   y: number,
   bullets: Bullet[],
   suns: Sun[],
-  barriers: any[],
+  barriers: Barrier[],
   mapWidth: number,
   mapHeight: number,
   predictionTime: number,
@@ -140,7 +140,7 @@ export function isPositionSafe(
 export function findEscapeDirection(
   tank: Tank,
   threats: Threat[],
-  barriers: any[],
+  barriers: Barrier[],
   suns: Sun[],
   mapWidth: number,
   mapHeight: number

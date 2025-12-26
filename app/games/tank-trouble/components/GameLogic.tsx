@@ -87,6 +87,7 @@ export function useMultiGameLogic({
   // Update refs when state changes
   useEffect(() => {
     gameInstances.forEach((instance) => {
+      const prevTanks = tanksRefs.current.get(instance.id);
       tanksRefs.current.set(instance.id, instance.tanks);
       bulletsRefs.current.set(instance.id, instance.bullets);
       
@@ -130,10 +131,17 @@ export function useMultiGameLogic({
       const currentBullets = [...(bulletsRefs.current.get(instance.id) || [])];
       let newLastShotTimes = { ...instance.lastShotTimes };
       const keys = instance.keysRef.current;
+      
+      // Validate tanks exist
+      if (!currentTanks || currentTanks.length < 2) {
+        return;
+      }
 
       // Update Player 1 (Blue)
       if (currentTanks[0]?.lives > 0) {
         let result;
+        const blueTankBefore = { ...currentTanks[0] };
+        
         if (instance.gameMode === 'person-vs-ai') {
           result = updatePlayer1Tank({
             tank: currentTanks[0],
@@ -182,6 +190,7 @@ export function useMultiGameLogic({
             allTanks: currentTanks,
           });
         }
+        
         currentTanks[0] = result.updatedTank;
         currentBullets.push(...result.newBullets);
         newLastShotTimes.blue = result.lastShotTime;
@@ -190,6 +199,8 @@ export function useMultiGameLogic({
       // Update Player 2 (Red)
       if (currentTanks[1]?.lives > 0) {
         let result;
+        const redTankBefore = { ...currentTanks[1] };
+        
         if (instance.gameMode === 'ai' || instance.gameMode === 'person-vs-ai') {
           result = updateAITank(
             {
@@ -229,6 +240,7 @@ export function useMultiGameLogic({
             instance.gameId
           );
         }
+        
         currentTanks[1] = result.updatedTank;
         currentBullets.push(...result.newBullets);
         newLastShotTimes.red = result.lastShotTime;

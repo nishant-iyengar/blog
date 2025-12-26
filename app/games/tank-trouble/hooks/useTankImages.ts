@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 export function useTankImages() {
-  const tankImagesRef = useRef<{ blue: HTMLImageElement | null; red: HTMLImageElement | null }>({
+  const [tankImages, setTankImages] = useState<{ blue: HTMLImageElement | null; red: HTMLImageElement | null }>({
     blue: null,
     red: null,
   });
@@ -10,16 +10,16 @@ export function useTankImages() {
     const blueImg = new Image();
     blueImg.src = '/games/tank-blue.svg';
     blueImg.onload = () => {
-      tankImagesRef.current.blue = blueImg;
+      setTankImages((prev) => ({ ...prev, blue: blueImg }));
     };
 
     const redImg = new Image();
     redImg.src = '/games/tank-red.svg';
     redImg.onload = () => {
-      tankImagesRef.current.red = redImg;
+      setTankImages((prev) => ({ ...prev, red: redImg }));
     };
   }, []);
 
-  return tankImagesRef;
+  return tankImages;
 }
 

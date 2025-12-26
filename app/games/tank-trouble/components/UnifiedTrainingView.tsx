@@ -31,8 +31,50 @@ function StatsDebouncer({
   
   return null;
 }
-import mapData from '@/content/games/tank-trouble-map.json';
-import type { Tank, Bullet, TankTroubleMapData } from '@/app/games/tank-trouble/types';
+import mapDataJson from '@/content/games/tank-trouble-map.json';
+import type { Tank, Bullet, TankTroubleMapData, Barrier, Sun } from '@/app/games/tank-trouble/types';
+import {
+  isObject,
+  isNumber,
+  isArray,
+  hasPropertyOfType,
+  parseAndValidate,
+  isError,
+} from '@/lib/type-guards';
+
+// Type guard for TankTroubleMapData
+function isTankTroubleMapData(data: unknown): data is TankTroubleMapData {
+  if (!isObject(data)) {
+    return false;
+  }
+  
+  return (
+    hasPropertyOfType(data, 'width', isNumber) &&
+    hasPropertyOfType(data, 'height', isNumber) &&
+    hasPropertyOfType(data, 'barriers', (val): val is Barrier[] => isArray(val)) &&
+    hasPropertyOfType(data, 'spawnPoints', (val): val is Array<{ x: number; y: number; angle: number }> => isArray(val)) &&
+    (!('suns' in data) || hasPropertyOfType(data, 'suns', (val): val is Sun[] => isArray(val)))
+  );
+}
+
+// Validate and construct map data without type assertions
+function validateMapData(data: unknown): TankTroubleMapData {
+  const parsed = parseAndValidate(
+    data,
+    isTankTroubleMapData,
+    'Invalid map data structure: missing or invalid required properties'
+  );
+  
+  return {
+    width: parsed.width,
+    height: parsed.height,
+    barriers: parsed.barriers,
+    spawnPoints: parsed.spawnPoints,
+    suns: parsed.suns || [],
+  };
+}
+
+const mapData: TankTroubleMapData = validateMapData(mapDataJson);
 import { useGameInput } from '@/app/games/tank-trouble/hooks/useGameInput';
 import { useTankImages } from '@/app/games/tank-trouble/hooks/useTankImages';
 import { useMultiGameLogic, type GameInstance as GameLogicInstance } from '@/app/games/tank-trouble/components/GameLogic';
@@ -42,7 +84,9 @@ import { DEFAULT_AI_CONFIG, type AIConfig, rlModelManager } from '@/app/games/ta
 import { useRLTraining } from '@/app/games/tank-trouble/ai-tank/rl-training-hook';
 import { listSavedModels, type SavedModel } from '@/app/games/tank-trouble/ai-tank/rl-model-storage';
 import { DQNAgent } from '@/app/games/tank-trouble/ai-tank/rl-dqn-model';
-import { TensorFlowJSModel } from '@/app/games/tank-trouble/ai-tank/rl-model';
+import { TensorFlowJSModel, type ExtendedRLModel } from '@/app/games/tank-trouble/ai-tank/rl-model';
+import type { Observation } from '@/app/games/tank-trouble/ai-tank/rl-observation';
+import type { AIDecision } from '@/app/games/tank-trouble/ai-tank/types';
 // import { TrainingDictionary } from './TrainingDictionary';
 
 interface GameInstance {
@@ -72,9 +116,12 @@ const AI_VS_AI_SPEED_MULTIPLIER = 1;
 const MAX_GAMES = 4;
 
 export function UnifiedTrainingView() {
-  const typedMapData = mapData as TankTroubleMapData;
-  const barriersRef = useRef(typedMapData.barriers);
-  const sunsRef = useRef(typedMapData.suns || []);
+  const typedMapData = mapData;
+  
+  // These are static values from map data, so use constants instead of refs
+  // Refs should only be used for values that change and shouldn't trigger re-renders
+  const barriers = typedMapData.barriers || [];
+  const suns = typedMapData.suns || [];
   const aiConfig = DEFAULT_AI_CONFIG;
   const maxGames = MAX_GAMES;
 
@@ -131,21 +178,27 @@ export function UnifiedTrainingView() {
   }, []);
 
   // Create game instances (start with 4 AI vs AI games)
-  const [gameInstances, setGameInstances] = useState<GameInstance[]>(() =>
-    Array.from({ length: maxGames }, (_, i) => ({
-      id: i,
-      tanks: getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current),
-      bullets: [],
-      lastShotTimes: { blue: 0, red: 0 },
-      gameOverWinner: null,
-      episodeReward: 0,
-      episodeLength: 0,
-      episodeStartTime: Date.now(),
-      gameType: 'ai-vs-ai',
-      isActive: false, // Games don't run until training starts
-      episodeNumber: i + 1, // Start at ID + 1 (Game 1, Game 2, Game 3, Game 4)
-    }))
-  );
+  const [gameInstances, setGameInstances] = useState<GameInstance[]>(() => {
+    const instances = Array.from({ length: maxGames }, (_, i) => {
+      const initialTanks = getInitialSpawnPositions(typedMapData, barriers, suns);
+      
+      return {
+        id: i,
+        tanks: initialTanks,
+        bullets: [],
+        lastShotTimes: { blue: 0, red: 0 },
+        gameOverWinner: null,
+        episodeReward: 0,
+        episodeLength: 0,
+        episodeStartTime: Date.now(),
+        gameType: 'ai-vs-ai' as const,
+        isActive: false, // Games don't run until training starts
+        episodeNumber: i + 1, // Start at ID + 1 (Game 1, Game 2, Game 3, Game 4)
+      };
+    });
+    
+    return instances;
+  });
 
   // Shared training manager
   const training = useRLTraining({
@@ -177,20 +230,23 @@ export function UnifiedTrainingView() {
     }
   }, [training.stats?.episode]);
 
-  const tankImagesRef = useTankImages();
+  const tankImages = useTankImages();
   
   // Single keyboard input hook - only one game can be personal at a time
   const activeGameOver = userPlayingGameId !== null ? gameInstances[userPlayingGameId]?.gameOverWinner !== null : false;
   const gameInput = useGameInput({ gameOver: activeGameOver });
 
+  // Stable empty keys ref for non-user games (created once, reused)
+  const emptyKeysRef = useRef<Set<string>>(new Set<string>());
+  
   // Use appropriate keys ref based on game type
-  const getKeysRef = (gameId: number) => {
+  const getKeysRef = useCallback((gameId: number) => {
     // Only return the keys ref if this is the game the user is playing
     if (gameId === userPlayingGameId) {
       return gameInput.keysRef;
     }
-    return { current: new Set<string>() };
-  };
+    return emptyKeysRef;
+  }, [userPlayingGameId, gameInput.keysRef]);
 
 
   // Replace AI game with person game (user joins as Blue, AI is Red)
@@ -260,22 +316,28 @@ export function UnifiedTrainingView() {
     training.isTraining,
     userPlayingGameId,
     gameInput.isPaused,
-    // getKeysRef is a stable function (doesn't change between renders), so not included in deps
+    getKeysRef, // Now properly memoized with useCallback
   ]);
 
   // Single hook call for all games
   const gameLogic = useMultiGameLogic({
     mapData: typedMapData,
-    barriers: barriersRef.current,
-    suns: sunsRef.current,
+    barriers: barriers,
+    suns: suns,
     aiConfig,
     trainingManager: training.manager,
     maxEpisodeTimeMs,
     gameInstances: gameLogicInstances,
     onTanksUpdate: (gameId, tanks) => {
-      setGameInstances((prev) =>
-        prev.map((gi) => (gi.id === gameId ? { ...gi, tanks } : gi))
-      );
+      setGameInstances((prev) => {
+        const updated = prev.map((gi) => {
+          if (gi.id === gameId) {
+            return { ...gi, tanks };
+          }
+          return gi;
+        });
+        return updated;
+      });
     },
     onBulletsUpdate: (gameId, bullets) => {
       setGameInstances((prev) =>
@@ -291,6 +353,10 @@ export function UnifiedTrainingView() {
       const newEpisodeNumber = nextEpisodeNumberRef.current++;
       training.incrementEpisode();
 
+      // Check the game type before resetting (to preserve user control if it's person-vs-ai)
+      const gameBeforeReset = gameInstances.find(gi => gi.id === gameId);
+      const wasPersonVsAI = gameBeforeReset?.gameType === 'person-vs-ai';
+
       setGameInstances((prev) =>
         prev.map((gi) => {
           if (gi.id === gameId) {
@@ -302,7 +368,7 @@ export function UnifiedTrainingView() {
 
             return {
               ...gi,
-              tanks: getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current),
+              tanks: getInitialSpawnPositions(typedMapData, barriers, suns),
               bullets: [],
               lastShotTimes: { blue: 0, red: 0 },
               gameOverWinner: null,
@@ -311,15 +377,20 @@ export function UnifiedTrainingView() {
               episodeStartTime: Date.now(),
               isActive: training.isTraining,
               episodeNumber: newEpisodeNumber,
+              // Preserve gameType so user can continue controlling if it was person-vs-ai
+              // gameType is already preserved in the spread (...gi)
             };
           }
           return gi;
         })
       );
 
-      if (gameId === userPlayingGameId) {
+      // Only clear userPlayingGameId if the game was NOT person-vs-ai
+      // If it was person-vs-ai, the user should keep control for the new episode
+      if (gameId === userPlayingGameId && !wasPersonVsAI) {
         setUserPlayingGameId(null);
       }
+      // If wasPersonVsAI is true, keep userPlayingGameId set so controls continue working
     },
   });
 
@@ -407,6 +478,12 @@ export function UnifiedTrainingView() {
       }
     } catch (error) {
       console.error('Failed to load models:', error);
+      
+      // Check for Safari/IndexedDB issues
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari && typeof window.indexedDB === 'undefined') {
+        console.warn('Safari detected with IndexedDB unavailable. This may be due to Private Browsing mode.');
+      }
     } finally {
       setIsLoadingModels(false);
     }
@@ -452,24 +529,59 @@ export function UnifiedTrainingView() {
         actionSize: 14,
       });
       
-      (model as any).agent = agent;
-      (model as any).predict = async (obs: any, angle: number) => agent.predict(obs, angle);
-      (model as any).isLoaded = () => true;
+      // Extend model with agent-specific methods
+      // Note: predict must be synchronous to match RLModel interface
+      // The agent's async predict is used in training, not in game loop
+      const extendedModel: ExtendedRLModel = {
+        isLoaded: () => model.isLoaded(),
+        load: (path: string) => model.load(path),
+        getInfo: () => model.getInfo(),
+        agent,
+        predict: (obs: Observation, angle: number): AIDecision => {
+          // Synchronous wrapper - actual async predictions happen in training
+          // For game loop compatibility, return default decision
+          // RL predictions are handled separately in training step
+          return {
+            angleDelta: 0,
+            moveDirection: 0,
+            shouldShoot: false,
+          };
+        },
+      };
       
       // Set as active model for AI controller (for playing against AI)
-      rlModelManager.setModel(model);
+      rlModelManager.setModel(extendedModel);
       
-      // If training is active, also load the model into the training manager
-      // This allows training to continue from the selected model
-      if (training.isTraining && training.manager) {
-        await training.manager.loadModel(modelPath);
+      // Always load the model into the training manager's agent
+      // This allows training to continue from the selected model when training starts
+      if (training.manager) {
+        // Extract path without indexeddb:// prefix for loadModel (it adds the prefix)
+        const cleanPath = modelPath.replace('indexeddb://', '');
+        await training.manager.loadModel(cleanPath);
         console.log('Model loaded into training manager for continued training');
       }
       
-      alert('Model loaded successfully!');
+      alert('Model loaded successfully! Training will continue from this model when you start training.');
     } catch (error) {
       console.error('Failed to load model:', error);
-      alert('Failed to load model. See console for details.');
+      
+      // Check for Safari/IndexedDB specific issues
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      let userMessage = 'Failed to load model.\n\n';
+      
+      if (isSafari) {
+        userMessage += 'Safari detected. Common issues:\n';
+        userMessage += '• Private Browsing mode disables IndexedDB - try regular browsing mode\n';
+        userMessage += '• Safari may require user interaction before accessing IndexedDB\n';
+        userMessage += '• Check Safari settings: Preferences > Privacy > uncheck "Prevent cross-site tracking"\n\n';
+      }
+      
+      userMessage += `Error: ${errorMessage}\n\n`;
+      userMessage += 'Check the browser console for more details.';
+      
+      alert(userMessage);
     }
   };
 
@@ -497,7 +609,42 @@ export function UnifiedTrainingView() {
       <div className="flex gap-4">
         {/* Left: RL Training + Model Selector, Stats, and Model Summary */}
         <div className="flex-1 space-y-4">
-          {/* RL Training Control + Model Selector (Horizontal Bar) */}
+          {/* Model Selector Section (Top) */}
+          <div className="p-4 bg-white border border-gray-300 rounded shadow">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-semibold whitespace-nowrap">Select Model (Optional):</label>
+              <select
+                value={selectedModel}
+                onChange={(e) => handleModelSelect(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                style={{ maxWidth: '200px' }}
+                disabled={isLoadingModels}
+              >
+                <option value="">{isLoadingModels ? 'Loading models...' : '-- Select a model --'}</option>
+                {savedModels.length === 0 && !isLoadingModels && (
+                  <option value="" disabled>No saved models found</option>
+                )}
+                {savedModels.map((model) => (
+                  <option key={model.path} value={model.path}>
+                    {model.createdAtString}{model.evalScore !== undefined ? ` (Eval: ${model.evalScore.toFixed(2)})` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={loadSavedModels}
+                style={{ backgroundColor: '#e5e7eb' }}
+                className="px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-200 disabled:opacity-50 text-sm font-medium whitespace-nowrap flex-shrink-0"
+                disabled={isLoadingModels}
+              >
+                {isLoadingModels ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-gray-500 italic">
+              Models are saved in your browser's local storage (Dexie DB). Maximum 8 models kept.
+            </div>
+          </div>
+
+          {/* Training Controls Section (Bottom) */}
           <div className="p-4 bg-white border border-gray-300 rounded shadow">
             <div className="flex items-center gap-4 flex-wrap">
               {/* Training Controls */}
@@ -507,10 +654,11 @@ export function UnifiedTrainingView() {
                     onClick={async () => {
                       if (selectedModel && training.manager) {
                         try {
-                          await training.manager.loadModel(selectedModel);
-                          console.log('Loaded selected model into training manager');
+                          // Extract path without indexeddb:// prefix for loadModel (it adds the prefix)
+                          const cleanPath = selectedModel.replace('indexeddb://', '');
+                          await training.manager.loadModel(cleanPath);
                         } catch (error) {
-                          console.error('Failed to load model into training manager:', error);
+                          // Silently fail - model loading is optional
                         }
                       }
                       training.startTraining();
@@ -538,29 +686,95 @@ export function UnifiedTrainingView() {
                         return;
                       }
                       
+                      // Check if model can be saved
+                      if (!training.canSaveModel()) {
+                        const bufferSize = training.getReplayBufferSize();
+                        const hasTrained = (training.stats?.loss ?? 0) > 0;
+                        const hasEpisodes = (training.stats?.episode ?? 0) > 0;
+                        
+                        let message = 'Cannot save model yet. Requirements:\n';
+                        if (bufferSize < 32) {
+                          message += `- Need at least 32 steps (current: ${bufferSize})\n`;
+                        }
+                        if (!hasTrained) {
+                          message += '- Model must be trained at least once (wait for training to occur)\n';
+                        }
+                        if (!hasEpisodes) {
+                          message += '- Need at least one completed episode\n';
+                        }
+                        alert(message);
+                        return;
+                      }
+                      
+                      // Get model version from Game Status (vX where X = Math.floor(episode / MAX_GAMES) + 1)
+                      const episode = training.stats?.episode || 0;
+                      const modelVersion = Math.floor(episode / MAX_GAMES) + 1;
+                      
+                      // Use ISO timestamp for model name
                       const timestamp = Date.now();
+                      const isoString = new Date(timestamp).toISOString();
                       const modelPath = `indexeddb://tank-ai-${timestamp}`;
-                      console.log('Attempting to save model to:', modelPath);
-                      await training.saveModel(modelPath);
-                      console.log('Model save completed, refreshing model list...');
+                      
+                      // Get eval score (average reward)
+                      const evalScore = training.stats?.averageReward;
+                      
+                      console.log('Attempting to save model to:', modelPath, 'with eval score:', evalScore);
+                      await training.saveModel(modelPath, evalScore, isoString);
+                      console.log('Model save completed, waiting a moment for IndexedDB to sync...');
+                      
+                      // Wait a bit for IndexedDB to fully sync (TensorFlow.js save is async)
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                      
+                      console.log('Refreshing model list...');
                       // Preserve current selection before refreshing
                       const currentSelection = selectedModelRef.current;
-                      await loadSavedModels(); // Refresh the model list
+                      
+                      // Try loading models with retry logic in case of timing issues
+                      let models = await listSavedModels();
+                      let retries = 0;
+                      while (models.length === 0 && retries < 3) {
+                        console.log(`Model list empty, retrying... (attempt ${retries + 1}/3)`);
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        models = await listSavedModels();
+                        retries++;
+                      }
+                      
+                      setSavedModels(models);
+                      console.log(`Found ${models.length} saved models after refresh`);
+                      
                       // If we had a selection and it still exists, restore it
                       // Otherwise, the newly saved model will be available but not auto-selected
-                      if (currentSelection) {
+                      if (currentSelection && models.some(m => m.path === currentSelection)) {
                         setSelectedModel(currentSelection);
                         selectedModelRef.current = currentSelection;
                       }
-                      alert(`Model saved successfully! (tank-ai-${timestamp})`);
+                      
+                      if (models.some(m => m.path === modelPath)) {
+                        alert(`Model v${modelVersion} saved successfully! It should now appear in the dropdown.`);
+                      } else {
+                        console.warn('Model saved but not found in list. This may be a timing issue. Try refreshing the model list manually.');
+                        alert(`Model v${modelVersion} saved, but it's not showing in the dropdown yet. Try clicking "Refresh" to reload the model list.`);
+                      }
                     } catch (error) {
                       console.error('Error saving model:', error);
-                      const errorMessage = error instanceof Error ? error.message : String(error);
+                      const errorMessage = isError(error) ? error.message : String(error);
                       alert(`Failed to save model: ${errorMessage}\n\nCheck the browser console for details.`);
                     }
                   }}
-                  style={{ backgroundColor: '#bfdbfe' }}
-                  className="px-4 py-2 bg-blue-200 text-blue-700 rounded hover:bg-blue-300 font-medium"
+                  disabled={!training.manager || !training.canSaveModel()}
+                  style={{ 
+                    backgroundColor: (!training.manager || !training.canSaveModel()) ? '#d1d5db' : '#bfdbfe',
+                    opacity: (!training.manager || !training.canSaveModel()) ? 0.6 : 1,
+                    cursor: (!training.manager || !training.canSaveModel()) ? 'not-allowed' : 'pointer',
+                  }}
+                  className={`px-4 py-2 rounded font-medium ${
+                    (!training.manager || !training.canSaveModel())
+                      ? 'bg-gray-300 text-gray-500'
+                      : 'bg-blue-200 text-blue-700 hover:bg-blue-300'
+                  }`}
+                  title={(!training.manager || !training.canSaveModel()) 
+                    ? `Requirements: 32+ steps, model trained (loss > 0), and at least 1 episode completed`
+                    : 'Save current model (creates new model, does not overwrite)'}
                 >
                   Save Model
                 </button>
@@ -571,41 +785,9 @@ export function UnifiedTrainingView() {
                 <span className={`inline-block w-3 h-3 rounded-full ${training.isTraining ? 'bg-green-500' : 'bg-gray-400'}`} />
                 <span>{training.isTraining ? 'Training Active' : 'Training Stopped'}</span>
               </div>
-
-              {/* Divider */}
-              <div className="h-6 w-px bg-gray-300" />
-
-              {/* Model Selector (Optional) */}
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <label className="text-sm font-semibold whitespace-nowrap">Select Model (Optional):</label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => handleModelSelect(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm min-w-0"
-                  disabled={isLoadingModels}
-                >
-                  <option value="">{isLoadingModels ? 'Loading models...' : '-- Select a model --'}</option>
-                  {savedModels.length === 0 && !isLoadingModels && (
-                    <option value="" disabled>No saved models found</option>
-                  )}
-                  {savedModels.map((model) => (
-                    <option key={model.path} value={model.path}>
-                      {model.name} - {model.createdAtString}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={loadSavedModels}
-                  style={{ backgroundColor: '#e5e7eb' }}
-                  className="px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-200 disabled:opacity-50 text-sm font-medium whitespace-nowrap flex-shrink-0"
-                  disabled={isLoadingModels}
-                >
-                  {isLoadingModels ? 'Loading...' : 'Refresh'}
-                </button>
-              </div>
             </div>
             <div className="mt-2 text-xs text-gray-500 italic">
-              Models are saved in your browser's local storage (IndexedDB)
+              Saving a model requires: 32+ steps, model trained (loss &gt; 0), and at least 1 episode completed
             </div>
           </div>
 
@@ -690,17 +872,6 @@ export function UnifiedTrainingView() {
                     </div>
                     <div className="text-xs text-gray-500 italic mt-0.5">Exploration rate (higher = more random)</div>
                   </div>
-                  <div>
-                    <div>
-                      <span className="text-gray-600">Loss: </span>
-                      <span className="font-semibold">{(training.stats.loss ?? 0).toFixed(4)}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 italic mt-0.5">
-                      {training.stats.loss === 0
-                        ? 'Will update after 32+ experiences collected and training starts (every 4 steps)'
-                        : 'Neural network training loss'}
-                    </div>
-                  </div>
                 </div>
                 {/* Active Games Stats - Always visible to prevent layout shifts */}
                 <div className="mt-2 pt-2 border-t border-gray-200">
@@ -716,7 +887,7 @@ export function UnifiedTrainingView() {
                         </span>
                       </div>
                       <div className="text-xs text-gray-500 italic mt-0.5">
-                        Total reward accumulated across all {gameInstances.filter(gi => gi.isActive).length} active games
+                        Total reward across all {gameInstances.filter(gi => gi.isActive).length} active games (positive = good, negative = poor performance, but still valid training data)
                       </div>
                     </div>
                   <div>
@@ -913,10 +1084,10 @@ export function UnifiedTrainingView() {
                       height={typedMapData.height}
                       tanks={instance.tanks}
                       bullets={instance.bullets}
-                      barriers={barriersRef.current}
-                      suns={sunsRef.current}
+                      barriers={barriers}
+                      suns={suns}
                       isPaused={!instance.isActive || !training.isTraining}
-                      tankImages={tankImagesRef.current}
+                      tankImages={tankImages}
                       gameOverWinner={instance.gameOverWinner}
                       scale={scale}
                     />

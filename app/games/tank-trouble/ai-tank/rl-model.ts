@@ -117,9 +117,16 @@ export class RuleBasedRLModel implements RLModel {
  * 3. Export it in a format TensorFlow.js can load
  * 4. Implement the predict method
  */
+// Extended interface for models that need additional properties
+// This properly extends RLModel with all required methods
+export interface ExtendedRLModel extends RLModel {
+  // Additional properties for agent integration
+  agent?: unknown;
+}
+
 export class TensorFlowJSModel implements RLModel {
   private loaded = false;
-  private model: any = null; // tf.LayersModel when implemented
+  private model: unknown = null; // tf.LayersModel when implemented
   private info: ModelInfo;
 
   constructor(info: ModelInfo) {
@@ -138,11 +145,10 @@ export class TensorFlowJSModel implements RLModel {
       // this.model = await tf.loadLayersModel(path);
       // this.loaded = true;
       
-      console.warn('TensorFlow.js model loading not yet implemented');
-      console.warn('To implement: install @tensorflow/tfjs and load your trained model');
+      // Removed warning logs
       this.loaded = false;
     } catch (error) {
-      console.error('Failed to load RL model:', error);
+      // Removed error log
       this.loaded = false;
       throw error;
     }
@@ -185,14 +191,14 @@ export class RLModelManager {
   /**
    * Set the active model
    */
-  setModel(model: RLModel): void {
+  setModel(model: RLModel | ExtendedRLModel): void {
     this.model = model;
   }
 
   /**
    * Get the active model (or fallback)
    */
-  getModel(): RLModel {
+  getModel(): RLModel | ExtendedRLModel {
     return this.model && this.model.isLoaded() ? this.model : this.fallbackModel;
   }
 

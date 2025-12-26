@@ -27,8 +27,7 @@ export async function trainRLAgent(
   episodes: number = 1000,
   modelPath?: string
 ) {
-  console.log('Starting RL training...');
-  console.log('NOTE: This is a template. Implement actual RL algorithm.');
+  // Removed debug logs
 
   // Initialize environment
   const env = new TankTroubleRLEnv();
@@ -46,9 +45,9 @@ export async function trainRLAgent(
   if (modelPath) {
     try {
       await model.load(modelPath);
-      console.log('Loaded existing model from:', modelPath);
+      // Model loaded
     } catch (error) {
-      console.log('No existing model found, starting fresh');
+      // No existing model found, starting fresh
     }
   }
 
@@ -82,19 +81,12 @@ export async function trainRLAgent(
       stepCount++;
     }
 
-    // Log episode statistics
-    if (episode % 100 === 0) {
-      console.log(`Episode ${episode}: Reward = ${episodeReward.toFixed(2)}`);
-    }
-
+    // Log episode statistics (removed console.log)
     // TODO: Save model periodically
     if (episode % 1000 === 0 && modelPath) {
       // await model.save(modelPath);
-      console.log(`Saved model checkpoint at episode ${episode}`);
     }
   }
-
-  console.log('Training complete!');
   return stats;
 }
 
@@ -114,12 +106,10 @@ export function useTrainedModel(modelPath: string) {
   // Load model
   model.load(modelPath)
     .then(() => {
-      console.log('RL model loaded successfully!');
-      console.log('The AI will now use RL instead of rule-based logic.');
+      // Model loaded successfully
     })
     .catch((error) => {
-      console.error('Failed to load RL model:', error);
-      console.log('Falling back to rule-based AI.');
+      // Failed to load model, falling back to rule-based AI
     });
 }
 
