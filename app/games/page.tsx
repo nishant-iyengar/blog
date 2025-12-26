@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import TankTroublePage from '@/app/games/tank-trouble/page';
 
 export default function GamesPage() {
   const router = useRouter();
+  const [tankTroubleView, setTankTroubleView] = useState<'training' | 'play'>('training');
 
   useEffect(() => {
     // Check if we're on mobile (width < 768px)
@@ -41,8 +42,18 @@ export default function GamesPage() {
             
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold text-[#4A5568] mb-4">Tank Trouble</h2>
-                <TankTroublePage />
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-[#4A5568]">Tank Trouble</h2>
+                  {tankTroubleView === 'training' && (
+                    <button
+                      onClick={() => setTankTroubleView('play')}
+                      className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
+                    >
+                      Play your AI
+                    </button>
+                  )}
+                </div>
+                <TankTroublePage view={tankTroubleView} onViewChange={setTankTroubleView} />
               </div>
             </div>
           </div>

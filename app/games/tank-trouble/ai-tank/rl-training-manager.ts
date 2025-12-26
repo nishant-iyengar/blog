@@ -424,7 +424,6 @@ export class RLTrainingManager {
     // Ensure path has indexeddb:// prefix for IndexedDB storage
     // If path already has the prefix, use it as-is; otherwise add it
     const fullPath = path.startsWith('indexeddb://') ? path : `indexeddb://${path}`;
-    console.log('RLTrainingManager: Saving model to', fullPath);
     
     if (!this.agent) {
       throw new Error('Agent not initialized. Cannot save model.');
@@ -436,7 +435,6 @@ export class RLTrainingManager {
     try {
       await this.agent.save(fullPath);
       // agent.save() now includes verification - if it returns, weights are saved
-      console.log(`RLTrainingManager: Model weights verified in IndexedDB: ${fullPath}`);
     } catch (error) {
       console.error('RLTrainingManager: Model weights save/verification failed:', error);
       throw new Error(`Failed to save model weights: ${error instanceof Error ? error.message : String(error)}`);
@@ -445,7 +443,6 @@ export class RLTrainingManager {
     // Only save metadata if weights were successfully saved and verified
     try {
       await saveModelWithMetadata(fullPath, evalScore, displayName);
-      console.log(`RLTrainingManager: Metadata saved successfully for: ${fullPath}`);
     } catch (metaError) {
       // If metadata save fails, log but don't throw - weights are already saved
       console.warn('RLTrainingManager: Failed to save model metadata (weights are saved):', metaError);
@@ -458,7 +455,6 @@ export class RLTrainingManager {
    */
   async loadModel(path: string): Promise<void> {
     await this.agent.load(`indexeddb://${path}`);
-    console.log(`Model loaded from: ${path}`);
   }
 
   /**

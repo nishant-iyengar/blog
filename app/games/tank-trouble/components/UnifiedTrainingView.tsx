@@ -254,7 +254,6 @@ export function UnifiedTrainingView() {
       const modelPath = `indexeddb://tank-ai-${timestamp}`;
       const evalScore = training.stats?.averageReward;
 
-      console.log('Auto-saving model to:', modelPath, 'with eval score:', evalScore);
       await training.saveModel(modelPath, evalScore, isoString);
       
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -262,8 +261,6 @@ export function UnifiedTrainingView() {
       const models = await listSavedModels();
       setSavedModels(models);
       setAutoSaveCount(prev => prev + 1);
-      
-      console.log(`Model v${modelVersion} auto-saved successfully!`);
       return true;
     } catch (error) {
       console.error('Error auto-saving model:', error);
@@ -669,7 +666,6 @@ export function UnifiedTrainingView() {
         // Extract path without indexeddb:// prefix for loadModel (it adds the prefix)
         const cleanPath = modelPath.replace('indexeddb://', '');
         await training.manager.loadModel(cleanPath);
-        console.log('Model loaded into training manager for continued training');
       }
       
       alert('Model loaded successfully! Training will continue from this model.');
@@ -800,14 +796,11 @@ export function UnifiedTrainingView() {
                       // Get eval score (average reward)
                       const evalScore = training.stats?.averageReward;
                       
-                      console.log('Attempting to save model to:', modelPath, 'with eval score:', evalScore);
                       await training.saveModel(modelPath, evalScore, isoString);
-                      console.log('Model save completed, waiting a moment for IndexedDB to sync...');
                       
                       // Wait a bit for IndexedDB to fully sync (TensorFlow.js save is async)
                       await new Promise(resolve => setTimeout(resolve, 500));
                       
-                      console.log('Refreshing model list...');
                       // Preserve current selection before refreshing
                       const currentSelection = selectedModelRef.current;
                       
@@ -815,14 +808,12 @@ export function UnifiedTrainingView() {
                       let models = await listSavedModels();
                       let retries = 0;
                       while (models.length === 0 && retries < 3) {
-                        console.log(`Model list empty, retrying... (attempt ${retries + 1}/3)`);
                         await new Promise(resolve => setTimeout(resolve, 500));
                         models = await listSavedModels();
                         retries++;
                       }
                       
                       setSavedModels(models);
-                      console.log(`Found ${models.length} saved models after refresh`);
                       
                       // If we had a selection and it still exists, restore it
                       // Otherwise, the newly saved model will be available but not auto-selected

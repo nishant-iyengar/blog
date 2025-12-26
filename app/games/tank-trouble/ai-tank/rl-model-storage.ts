@@ -161,9 +161,7 @@ async function saveMetadata(
       createdAtString: formatDateString(createdAt),
       evalScore,
     };
-    console.log(`[saveMetadata] Putting metadata:`, metadata);
     await db.modelMetadata.put(metadata);
-    console.log(`[saveMetadata] Metadata put successfully`);
   } catch (error) {
     console.error('Failed to save model metadata:', error);
     // Re-throw so we know if metadata save fails
@@ -224,7 +222,6 @@ async function deleteMetadata(path: string): Promise<void> {
  */
 export async function modelExists(modelPath: string): Promise<boolean> {
   if (typeof window === 'undefined') {
-    console.log(`[modelExists] Window not available for path: ${modelPath}`);
     return false;
   }
 
@@ -234,10 +231,8 @@ export async function modelExists(modelPath: string): Promise<boolean> {
     const modelKeys = Object.keys(savedModels);
     
     const exists = modelKeys.includes(modelPath);
-    console.log(`[modelExists] Model '${modelPath}' exists according to TensorFlow.js: ${exists}`);
     
     if (!exists) {
-      console.log(`[modelExists] Available models:`, modelKeys);
     }
     
     return exists;
@@ -254,7 +249,6 @@ export async function modelExists(modelPath: string): Promise<boolean> {
  */
 async function modelExistsFallback(modelPath: string): Promise<boolean> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
-    console.log(`[modelExistsFallback] IndexedDB not available for path: ${modelPath}`);
     return false;
   }
 
@@ -269,7 +263,6 @@ async function modelExistsFallback(modelPath: string): Promise<boolean> {
       
       // Check if object store exists
       if (!db.objectStoreNames.contains(cleanPath)) {
-        console.log(`[modelExistsFallback] Object store '${cleanPath}' does not exist in database`);
         db.close();
         resolve(false);
         return;
@@ -283,7 +276,6 @@ async function modelExistsFallback(modelPath: string): Promise<boolean> {
         
         countRequest.onsuccess = () => {
           const hasData = countRequest.result > 0;
-          console.log(`[modelExistsFallback] Object store '${cleanPath}' has ${countRequest.result} entries, exists=${hasData}`);
           db.close();
           resolve(hasData);
         };
@@ -313,7 +305,6 @@ async function modelExistsFallback(modelPath: string): Promise<boolean> {
     
     request.onupgradeneeded = () => {
       // Database doesn't exist yet or needs upgrade
-      console.log(`[modelExistsFallback] Database '${dbName}' needs upgrade, model doesn't exist yet`);
       resolve(false);
     };
   });
@@ -337,15 +328,12 @@ export async function listAvailableModelPaths(): Promise<string[]> {
     const savedModels = await tf.io.listModels();
     const modelKeys = Object.keys(savedModels);
     
-    console.log(`[listAvailableModelPaths] TensorFlow.js reports ${modelKeys.length} saved models`);
-    console.log(`[listAvailableModelPaths] All model keys:`, modelKeys);
     
     // Filter to only IndexedDB models that match our naming pattern
     const indexedDbModels = modelKeys.filter(key => 
       key.startsWith('indexeddb://') && key.includes(MODEL_NAME_PREFIX)
     );
     
-    console.log(`[listAvailableModelPaths] Filtered IndexedDB models (starting with 'indexeddb://${MODEL_NAME_PREFIX}'):`, indexedDbModels);
     
     return indexedDbModels;
   } catch (error) {
@@ -372,7 +360,6 @@ async function listAvailableModelPathsFallback(): Promise<string[]> {
     request.onsuccess = () => {
       const db = request.result;
       const objectStoreNames = Array.from(db.objectStoreNames);
-      console.log(`[listAvailableModelPathsFallback] Database '${dbName}' has ${objectStoreNames.length} object stores:`, objectStoreNames);
       
       const modelPaths = objectStoreNames
         .filter(name => name.startsWith(MODEL_NAME_PREFIX))
@@ -380,10 +367,7 @@ async function listAvailableModelPathsFallback(): Promise<string[]> {
       
       // Also log all object stores (not just ones starting with MODEL_NAME_PREFIX)
       if (objectStoreNames.length > 0) {
-        console.log(`[listAvailableModelPathsFallback] All object stores in '${dbName}':`, objectStoreNames);
-        console.log(`[listAvailableModelPathsFallback] Filtered model paths (starting with '${MODEL_NAME_PREFIX}'):`, modelPaths);
       } else {
-        console.log(`[listAvailableModelPathsFallback] No object stores found in '${dbName}' database`);
       }
       
       db.close();
@@ -396,7 +380,6 @@ async function listAvailableModelPathsFallback(): Promise<string[]> {
     };
     
     request.onupgradeneeded = () => {
-      console.log(`[listAvailableModelPathsFallback] Database '${dbName}' needs upgrade - no models exist yet`);
       resolve([]);
     };
   });
@@ -408,16 +391,13 @@ async function listAvailableModelPathsFallback(): Promise<string[]> {
  */
 export async function debugListAllIndexedDBDatabases(): Promise<void> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
-    console.log('[debugListAllIndexedDBDatabases] IndexedDB not available');
     return;
   }
   
-  console.log('[debugListAllIndexedDBDatabases] Listing all IndexedDB databases...');
   
   if (indexedDB.databases) {
     try {
       const databases = await indexedDB.databases();
-      console.log(`[debugListAllIndexedDBDatabases] Found ${databases.length} databases:`, databases.map(db => ({ name: db.name, version: db.version })));
       
       // Open each database and list object stores
       for (const dbInfo of databases) {
@@ -427,7 +407,6 @@ export async function debugListAllIndexedDBDatabases(): Promise<void> {
           request.onsuccess = () => {
             const db = request.result;
             const objectStores = Array.from(db.objectStoreNames);
-            console.log(`[debugListAllIndexedDBDatabases] Database '${dbInfo.name}' (v${db.version}) has ${objectStores.length} object stores:`, objectStores);
             db.close();
           };
           request.onerror = () => {
@@ -470,7 +449,6 @@ export async function listSavedModels(): Promise<SavedModel[]> {
     
     for (const m of allModels) {
       const exists = await modelExists(m.path);
-      console.log(`[listSavedModels] Checking model ${m.path}: exists=${exists}`);
       if (exists) {
         validModels.push({
           name: m.name,
@@ -485,12 +463,10 @@ export async function listSavedModels(): Promise<SavedModel[]> {
       }
     }
     
-    console.log(`[listSavedModels] Found ${allModels.length} total models in metadata, ${validModels.length} valid, ${orphanedModels.length} orphaned`);
     
     // Clean up orphaned metadata entries (models with metadata but no weights)
     // This can happen if IndexedDB was cleared but Dexie metadata remained, or if a save failed
     if (orphanedModels.length > 0) {
-      console.log(`[listSavedModels] Cleaning up ${orphanedModels.length} orphaned metadata entries (model weights missing)`);
       for (const orphanedPath of orphanedModels) {
         try {
           await deleteMetadata(orphanedPath);
@@ -563,7 +539,6 @@ export async function deleteModel(modelPath: string): Promise<void> {
     // Delete metadata from Dexie
     await deleteMetadata(modelPath);
     
-    console.log(`Model deleted: ${modelPath}`);
   } catch (error) {
     console.error('Error deleting model:', error);
     // Still try to delete metadata even if TensorFlow.js deletion failed
@@ -642,9 +617,7 @@ export async function saveModelWithMetadata(
   }
   
   // Save metadata
-  console.log(`[saveModelWithMetadata] Saving metadata for path: ${modelPath}, name: ${name}, timestamp: ${timestamp}, evalScore: ${evalScore}`);
   await saveMetadata(modelPath, name, timestamp, evalScore);
-  console.log(`[saveModelWithMetadata] Metadata saved successfully`);
   
   // Keep only the most recent MAX_MODELS models
   const allModels = await db!.modelMetadata
@@ -659,7 +632,6 @@ export async function saveModelWithMetadata(
       try {
         // Use the deleteModel function which properly deletes from both TensorFlow.js IndexedDB and Dexie
         await deleteModel(modelToDelete.path);
-        console.log(`Deleted old model: ${modelToDelete.path}`);
       } catch (error) {
         console.warn(`Failed to delete old model ${modelToDelete.path}:`, error);
       }
