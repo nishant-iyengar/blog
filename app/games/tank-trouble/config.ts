@@ -4,7 +4,7 @@ export const GAME_CONFIG = {
   tank: {
     size: 24, // 17 * 1.4 = 23.8, rounded to 24
     collisionSize: 10, // 7 * 1.4 = 9.8, rounded to 10
-    speed: 1.12, // 2.24 * 0.5 = 1.12
+    speed: 1.4, // 1.12 * 1.25 = 1.4 (25% faster)
     rotationSpeed: 5, // degrees per tick (keep same)
     lives: 3,
     spawnOffset: 2, // 4 * 0.5 = 2
@@ -13,7 +13,7 @@ export const GAME_CONFIG = {
   // Bullet settings (60% slower - 40% of current speed)
   bullet: {
     speedMultiplier: 1.8 , // Bullet speed = tank speed * this multiplier (60% slower: 2.4 * 0.4 = 0.96)
-    maxPerTank: 10,
+    maxPerTank: 5,
     maxAge: 7000, // Maximum lifetime in milliseconds (7 seconds)
     fadeDuration: 500, // Fade duration in milliseconds
     radius: 2, // Twice as big: 1 * 2 = 2
@@ -43,6 +43,11 @@ export const GAME_CONFIG = {
     uiTextSize: 7, // 13 * 0.5 = 6.5, rounded to 7
     uiTextOffsetX: 4, // 8 * 0.5 = 4
     uiTextOffsetY: 10, // 20 * 0.5 = 10
+  },
+  
+  // Debug flags
+  debug: {
+    disableSunGravity: true, // When true, disables sun gravity and hides suns (for performance testing)
   },
 } as const;
 

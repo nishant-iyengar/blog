@@ -38,7 +38,7 @@ export function useRLTraining(config: Partial<TrainingConfig> = {}) {
         setStats((prev) => {
           // Preserve loss value from previous stats if it exists and is non-zero
           // This prevents loss from being reset to 0 when episodes complete
-          const preservedLoss = (prev?.loss ?? 0) > 0 ? prev.loss : episodeStats.loss;
+          const preservedLoss = (prev?.loss ?? 0) > 0 ? (prev?.loss ?? 0) : episodeStats.loss;
           return { ...episodeStats, loss: preservedLoss };
         });
         if (onEpisodeCompleteRef.current) {
@@ -58,7 +58,7 @@ export function useRLTraining(config: Partial<TrainingConfig> = {}) {
               'epsilon',
               'loss',
             ];
-            return isKeyOf<TrainingStats>(key, validKeys);
+            return typeof key === 'string' && validKeys.includes(key as keyof TrainingStats);
           };
           
           // Filter out undefined values to prevent overwriting with undefined

@@ -136,12 +136,13 @@ export function calculateReward(
   // 6. Shot accuracy (reward for shots that get close to enemy)
   if (action.shouldShoot) {
     // Find bullets that were just created (within last 100ms)
-    // Use single pass instead of filter for better performance
+    // Optimized: single pass instead of filter + iteration (avoids creating intermediate array)
     const RECENT_BULLET_THRESHOLD_MS = 100;
-    const aiBullets = current.bullets.filter(b => b.owner === current.aiTank.color);
     
-    for (const bullet of aiBullets) {
-      if (current.tickTime - bullet.createdAt < RECENT_BULLET_THRESHOLD_MS) {
+    for (const bullet of current.bullets) {
+      // Check owner and recency in single pass
+      if (bullet.owner === current.aiTank.color && 
+          current.tickTime - bullet.createdAt < RECENT_BULLET_THRESHOLD_MS) {
         const closestApproach = getClosestBulletApproach(bullet, current.enemyTank);
         // Reward inversely proportional to closest approach
         // Max reward if bullet gets within 20 pixels

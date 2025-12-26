@@ -9,6 +9,33 @@ import type { Tank, Bullet, Barrier, Sun } from '@/app/games/tank-trouble/types'
 import type { AIContext } from './types';
 import { TANK_SIZE, TANK_SPEED, BULLET_SPEED } from '@/app/games/tank-trouble/config';
 
+// Cache for barrier bounds (barriers are static during gameplay)
+interface BarrierBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+let cachedBarrierBounds: BarrierBounds[] | null = null;
+let cachedBarriersReference: Barrier[] | null = null;
+
+/**
+ * Get or compute barrier bounds (cached for performance)
+ */
+function getBarrierBounds(barriers: Barrier[]): BarrierBounds[] {
+  // Check if barriers array reference changed
+  if (cachedBarrierBounds === null || cachedBarriersReference !== barriers) {
+    cachedBarrierBounds = barriers.map(barrier => ({
+      left: barrier.x,
+      right: barrier.x + barrier.width,
+      top: barrier.y,
+      bottom: barrier.y + barrier.height,
+    }));
+    cachedBarriersReference = barriers;
+  }
+  return cachedBarrierBounds;
+}
+
 /**
  * Observation vector structure
  * 
@@ -78,9 +105,14 @@ export function extractObservation(context: AIContext): Observation {
   features.push(angleDiff);
 
   // 5. Bullet states (MAX_BULLETS * BULLET_FEATURES features)
-  const activeBullets = bullets
-    .filter(b => !b.exploding)
-    .slice(0, MAX_BULLETS);
+  // Optimized: single pass to collect active bullets (avoid filter + slice creating intermediate array)
+  const activeBullets: Bullet[] = [];
+  for (let i = 0; i < bullets.length && activeBullets.length < MAX_BULLETS; i++) {
+    const bullet = bullets[i];
+    if (!bullet.exploding) {
+      activeBullets.push(bullet);
+    }
+  }
   
   for (let i = 0; i < MAX_BULLETS; i++) {
     if (i < activeBullets.length) {
@@ -181,13 +213,8 @@ function getBarrierDistances(
     { dx: 1, dy: -1 },  // Up-right
   ];
 
-  // Pre-compute barrier bounds once instead of repeatedly accessing properties
-  const barrierBounds = barriers.map(barrier => ({
-    left: barrier.x,
-    right: barrier.x + barrier.width,
-    top: barrier.y,
-    bottom: barrier.y + barrier.height,
-  }));
+  // Get cached barrier bounds (only recomputed if barriers array reference changes)
+  const barrierBounds = getBarrierBounds(barriers);
 
   const step = 5; // Check every 5 pixels
   const maxDistance = Math.max(mapWidth, mapHeight);

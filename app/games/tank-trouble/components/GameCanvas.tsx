@@ -78,10 +78,12 @@ export function GameCanvas({
     }
 
     // Draw gravitational field arrows (before suns so they appear behind)
-    ctx.strokeStyle = 'rgba(98, 156, 119, 0.3)';
-    ctx.fillStyle = 'rgba(98, 156, 119, 0.3)';
-    ctx.lineWidth = 1 / scale;
-    for (const sun of suns) {
+    // Skip if sun gravity is disabled via debug flag
+    if (!GAME_CONFIG.debug.disableSunGravity) {
+      ctx.strokeStyle = 'rgba(98, 156, 119, 0.3)';
+      ctx.fillStyle = 'rgba(98, 156, 119, 0.3)';
+      ctx.lineWidth = 1 / scale;
+      for (const sun of suns) {
       const gridSpacing = 30;
       const arrowLength = 8;
       const arrowHeadSize = 3;
@@ -122,10 +124,12 @@ export function GameCanvas({
           }
         }
       }
+      }
     }
 
-    // Draw suns
-    for (const sun of suns) {
+    // Draw suns (skip if disabled via debug flag)
+    if (!GAME_CONFIG.debug.disableSunGravity) {
+      for (const sun of suns) {
       const gradient = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, sun.size);
       gradient.addColorStop(0, 'rgba(98, 156, 119, 0.9)');
       gradient.addColorStop(0.7, 'rgba(98, 156, 119, 0.75)');
@@ -139,15 +143,15 @@ export function GameCanvas({
       ctx.strokeStyle = 'rgba(98, 156, 119, 0.5)';
       ctx.lineWidth = 2 / scale;
       ctx.stroke();
+      }
     }
 
     // Draw tanks (no animations)
     // Only draw valid tanks (exactly 2 tanks expected: blue and red)
-    // Filter to ensure we only have valid tanks with proper positions
-    const validTanks = tanks
-      .filter(tank => tank && tank.lives !== undefined && tank.x !== undefined && tank.y !== undefined && tank.color)
-      .slice(0, 2); // Only draw first 2 tanks to prevent flickering from stale data
-    
+    // Optimized: direct array access instead of filter (tanks are guaranteed to be valid)
+    const validTanks = tanks.length >= 2 
+      ? [tanks[0], tanks[1]] 
+      : tanks.slice(0, 2);
     
     for (const tank of validTanks) {
       // Skip tanks with 0 lives or invalid positions

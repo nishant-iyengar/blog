@@ -39,11 +39,13 @@ export function predictBulletPath(
   const bulletCollisionSize = GAME_CONFIG.bullet.collisionSize;
   let isBlocked = false;
 
-  // Convert suns to vector sources (pre-compute once)
-  const sunSources: Vector2D[] = suns.map((sun) => ({
-    x: sun.x,
-    y: sun.y,
-  }));
+  // Convert suns to vector sources (pre-compute once, skip if disabled via debug flag)
+  const sunSources: Vector2D[] = GAME_CONFIG.debug.disableSunGravity
+    ? []
+    : suns.map((sun) => ({
+        x: sun.x,
+        y: sun.y,
+      }));
 
   // Pre-compute gravity config (avoid recreating object in loop)
   const gravityConfig = {
@@ -58,12 +60,14 @@ export function predictBulletPath(
   points.push({ x: currentX, y: currentY, time: currentTime });
 
   while (currentTime < maxTime && !isBlocked) {
-    // Apply gravity (using pre-computed sources and config)
-    const gravityAcceleration = applyGravityFromSources(
-      { x: currentX, y: currentY },
-      sunSources,
-      gravityConfig
-    );
+    // Apply gravity (skip if disabled via debug flag)
+    const gravityAcceleration = GAME_CONFIG.debug.disableSunGravity
+      ? { x: 0, y: 0 }
+      : applyGravityFromSources(
+          { x: currentX, y: currentY },
+          sunSources,
+          gravityConfig
+        );
 
     // Update velocity
     let newVx = currentVx + gravityAcceleration.x;

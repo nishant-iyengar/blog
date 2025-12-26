@@ -421,6 +421,7 @@ export async function debugListAllIndexedDBDatabases(): Promise<void> {
       
       // Open each database and list object stores
       for (const dbInfo of databases) {
+        if (!dbInfo.name) continue;
         try {
           const request = indexedDB.open(dbInfo.name);
           request.onsuccess = () => {
@@ -656,42 +657,8 @@ export async function saveModelWithMetadata(
     const modelsToDelete = allModels.slice(MAX_MODELS);
     for (const modelToDelete of modelsToDelete) {
       try {
-        // Delete from TensorFlow.js IndexedDB
-        const tfDbName = 'tensorflowjs_models';
-        await new Promise<void>((resolve, reject) => {
-          const request = indexedDB.open(tfDbName);
-          
-          request.onsuccess = () => {
-            const db = request.result;
-            const cleanDeletePath = modelToDelete.path.replace('indexeddb://', '');
-            
-            if (db.objectStoreNames.contains(cleanDeletePath)) {
-              const transaction = db.transaction([cleanDeletePath], 'readwrite');
-              const store = transaction.objectStore(cleanDeletePath);
-              const clearRequest = store.clear();
-              
-              clearRequest.onsuccess = () => {
-                db.close();
-                resolve();
-              };
-              
-              clearRequest.onerror = () => {
-                db.close();
-                reject(new Error('Failed to clear model data'));
-              };
-            } else {
-              db.close();
-              resolve();
-            }
-          };
-          
-          request.onerror = () => {
-            reject(new Error('Failed to open TensorFlow.js database'));
-          };
-        });
-        
-        // Delete metadata from Dexie
-        await deleteMetadata(modelToDelete.path);
+        // Use the deleteModel function which properly deletes from both TensorFlow.js IndexedDB and Dexie
+        await deleteModel(modelToDelete.path);
         console.log(`Deleted old model: ${modelToDelete.path}`);
       } catch (error) {
         console.warn(`Failed to delete old model ${modelToDelete.path}:`, error);

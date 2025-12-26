@@ -21,6 +21,69 @@ import { BULLET_MIN_VELOCITY } from '@/app/games/tank-trouble/constants/game-con
 import { distance, radToDeg } from '@/app/games/tank-trouble/utils/math';
 import { detectBulletCollisions, groupBulletsByOwner } from '@/app/games/tank-trouble/utils/bullet-optimization';
 
+// Cache for sun sources (suns are static during gameplay)
+let cachedSunSources: Vector2D[] | null = null;
+let cachedSunsReference: Sun[] | null = null;
+let cachedDisableSunGravity: boolean | null = null;
+
+// Cache for gravity config (only maxAcceleration depends on BULLET_SPEED)
+let cachedGravityConfig: {
+  gravitationalConstant: number;
+  sourceMass: number;
+  influenceRadius: number;
+  minDistance: number;
+  maxAcceleration: number;
+} | null = null;
+let cachedBulletSpeed: number | null = null;
+
+/**
+ * Get or compute sun sources array (cached for performance)
+ */
+function getSunSources(suns: Sun[]): Vector2D[] {
+  const disableSunGravity = GAME_CONFIG.debug.disableSunGravity;
+  
+  // Check if suns array reference changed, disable flag changed, or cache is invalid
+  if (cachedSunSources === null || 
+      cachedSunsReference !== suns || 
+      cachedDisableSunGravity !== disableSunGravity) {
+    if (disableSunGravity) {
+      cachedSunSources = [];
+    } else {
+      cachedSunSources = suns.map((sun) => ({
+        x: sun.x,
+        y: sun.y,
+      }));
+    }
+    cachedSunsReference = suns;
+    cachedDisableSunGravity = disableSunGravity;
+  }
+  return cachedSunSources;
+}
+
+/**
+ * Get or compute gravity config (cached for performance)
+ */
+function getGravityConfig(): {
+  gravitationalConstant: number;
+  sourceMass: number;
+  influenceRadius: number;
+  minDistance: number;
+  maxAcceleration: number;
+} {
+  // Check if BULLET_SPEED changed (only maxAcceleration depends on it)
+  if (cachedGravityConfig === null || cachedBulletSpeed !== BULLET_SPEED) {
+    cachedGravityConfig = {
+      gravitationalConstant: G,
+      sourceMass: mSun,
+      influenceRadius: SUN_INFLUENCE_RADIUS,
+      minDistance: GAME_CONFIG.sun.minDistance,
+      maxAcceleration: BULLET_SPEED * 0.3, // Max 30% of bullet speed per frame
+    };
+    cachedBulletSpeed = BULLET_SPEED;
+  }
+  return cachedGravityConfig;
+}
+
 interface UpdateBulletsParams {
   bullets: Bullet[];
   tickTime: number;
@@ -51,20 +114,11 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
   const bulletGroups = groupBulletsByOwner(bullets);
   const bulletsToRemove = detectBulletCollisions(bullets, bulletGroups);
 
-  // Pre-compute sun sources once (avoid recreating array for every bullet)
-  const sunSources: Vector2D[] = suns.map((sun) => ({
-    x: sun.x,
-    y: sun.y,
-  }));
+  // Get cached sun sources (only recomputed if suns array reference changes)
+  const sunSources = getSunSources(suns);
 
-  // Pre-compute gravity config (avoid recreating object for every bullet)
-  const gravityConfig = {
-    gravitationalConstant: G,
-    sourceMass: mSun,
-    influenceRadius: SUN_INFLUENCE_RADIUS,
-    minDistance: GAME_CONFIG.sun.minDistance,
-    maxAcceleration: BULLET_SPEED * 0.3, // Max 30% of bullet speed per frame
-  };
+  // Get cached gravity config (only recomputed if BULLET_SPEED changes)
+  const gravityConfig = getGravityConfig();
 
   // Second pass: update remaining bullets
   for (let i = 0; i < bullets.length; i++) {
@@ -88,12 +142,14 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
       // Keep bullet but mark as fading (will be handled in rendering)
     }
 
-    // Apply gravitational force from suns (using pre-computed sources and config)
-    const gravityAcceleration = applyGravityFromSources(
-      { x: bullet.x, y: bullet.y },
-      sunSources,
-      gravityConfig
-    );
+    // Apply gravitational force from suns (skip if disabled via debug flag)
+    const gravityAcceleration = GAME_CONFIG.debug.disableSunGravity
+      ? { x: 0, y: 0 }
+      : applyGravityFromSources(
+          { x: bullet.x, y: bullet.y },
+          sunSources,
+          gravityConfig
+        );
 
     // Update velocity with gravitational acceleration
     let newVx = bullet.vx + gravityAcceleration.x;

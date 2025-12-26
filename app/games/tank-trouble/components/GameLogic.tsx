@@ -344,9 +344,14 @@ export function useMultiGameLogic({
         
         if (tank.lives < originalTank.lives && tank.lives > 0) {
           const tankColor = tank.color;
-          bulletResult.updatedBullets = bulletResult.updatedBullets.filter(
-            bullet => bullet.owner !== tankColor
-          );
+          // Optimized: build new array instead of filter (more explicit, same complexity but clearer intent)
+          const filteredBullets: typeof bulletResult.updatedBullets = [];
+          for (const bullet of bulletResult.updatedBullets) {
+            if (bullet.owner !== tankColor) {
+              filteredBullets.push(bullet);
+            }
+          }
+          bulletResult.updatedBullets = filteredBullets;
           
           const spawn = generateRandomSpawnPosition(
             mapData,

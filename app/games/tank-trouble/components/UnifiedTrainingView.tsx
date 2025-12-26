@@ -113,6 +113,8 @@ const AI_VS_AI_SPEED_MULTIPLIER = 1;
 
 // Configuration: Number of simultaneous games to train
 const MAX_GAMES = 4;
+const MAX_GAMES_HEADLESS = 8; // More games in headless mode since we're not rendering
+const AUTO_SAVE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 export function UnifiedTrainingView() {
   const typedMapData = mapData;
@@ -122,7 +124,14 @@ export function UnifiedTrainingView() {
   const barriers = typedMapData.barriers || [];
   const suns = typedMapData.suns || [];
   const aiConfig = DEFAULT_AI_CONFIG;
-  const maxGames = MAX_GAMES;
+  
+  // Headless training mode
+  const [isHeadlessMode, setIsHeadlessMode] = useState(false);
+  const [autoSaveCount, setAutoSaveCount] = useState(0);
+  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Use more games in headless mode since we're not rendering
+  const maxGames = isHeadlessMode ? MAX_GAMES_HEADLESS : MAX_GAMES;
 
   // Game statistics
   const [gameStats, setGameStats] = useState<GameStats>({
@@ -162,7 +171,7 @@ export function UnifiedTrainingView() {
   const [userPlayingGameId, setUserPlayingGameId] = useState<number | null>(null);
 
   // Ref to track next episode number atomically (prevents race conditions when multiple games end simultaneously)
-  const nextEpisodeNumberRef = useRef(MAX_GAMES + 1); // Start at MAX_GAMES + 1 (first game will be MAX_GAMES + 1)
+  const nextEpisodeNumberRef = useRef(MAX_GAMES + 1); // Start at MAX_GAMES + 1 (will be updated when headless mode changes)
 
   // Track current time for duration calculations
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -176,9 +185,9 @@ export function UnifiedTrainingView() {
     return () => clearInterval(interval);
   }, []);
 
-  // Create game instances (start with 4 AI vs AI games)
+  // Create game instances (start with MAX_GAMES AI vs AI games, will expand to MAX_GAMES_HEADLESS in headless mode)
   const [gameInstances, setGameInstances] = useState<GameInstance[]>(() => {
-    const instances = Array.from({ length: maxGames }, (_, i) => {
+    const instances = Array.from({ length: MAX_GAMES }, (_, i) => {
       const initialTanks = getInitialSpawnPositions(typedMapData, barriers, suns);
       
       return {
@@ -208,8 +217,8 @@ export function UnifiedTrainingView() {
     // headless: false,
   });
 
-  // All games are always active (assume all 4 games are always running)
-  const activeGamesCount = MAX_GAMES;
+  // All games are always active (assume all games are always running)
+  const activeGamesCount = gameInstances.length;
 
   // Sync gameStats.totalGames with training episode count (completed games)
   useEffect(() => {
@@ -226,10 +235,118 @@ export function UnifiedTrainingView() {
   // This includes both completed and incomplete games
   useEffect(() => {
     if (training.stats && training.stats.episode !== undefined) {
-      // Total games started = completed games + MAX_GAMES (currently running games)
-      setTotalGamesStarted(training.stats.episode + MAX_GAMES);
+      // Total games started = completed games + active games count
+      setTotalGamesStarted(training.stats.episode + activeGamesCount);
     }
-  }, [training.stats?.episode]);
+  }, [training.stats?.episode, activeGamesCount]);
+
+  // Helper function to save model (used by both manual and auto-save)
+  const saveModelHelper = useCallback(async () => {
+    if (!training.manager || !training.canSaveModel()) {
+      return false;
+    }
+
+    try {
+      const episode = training.stats?.episode || 0;
+      const modelVersion = Math.floor(episode / activeGamesCount) + 1;
+      const timestamp = Date.now();
+      const isoString = new Date(timestamp).toISOString();
+      const modelPath = `indexeddb://tank-ai-${timestamp}`;
+      const evalScore = training.stats?.averageReward;
+
+      console.log('Auto-saving model to:', modelPath, 'with eval score:', evalScore);
+      await training.saveModel(modelPath, evalScore, isoString);
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const models = await listSavedModels();
+      setSavedModels(models);
+      setAutoSaveCount(prev => prev + 1);
+      
+      console.log(`Model v${modelVersion} auto-saved successfully!`);
+      return true;
+    } catch (error) {
+      console.error('Error auto-saving model:', error);
+      return false;
+    }
+  }, [training, activeGamesCount]);
+
+  // Auto-save interval for headless mode
+  useEffect(() => {
+    if (isHeadlessMode && training.isTraining) {
+      // Clear any existing interval
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+      }
+      
+      // Set up auto-save every 5 minutes
+      autoSaveIntervalRef.current = setInterval(() => {
+        saveModelHelper();
+      }, AUTO_SAVE_INTERVAL_MS);
+      
+      return () => {
+        if (autoSaveIntervalRef.current) {
+          clearInterval(autoSaveIntervalRef.current);
+        }
+      };
+    } else {
+      // Clear interval when headless mode is disabled or training stops
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+    }
+  }, [isHeadlessMode, training.isTraining, saveModelHelper]);
+
+  // Update game instances when headless mode changes
+  useEffect(() => {
+    const targetCount = isHeadlessMode ? MAX_GAMES_HEADLESS : MAX_GAMES;
+    setGameInstances(prev => {
+      if (prev.length === targetCount) {
+        return prev; // No change needed
+      }
+      
+      if (prev.length < targetCount) {
+        // Add more game instances
+        const newInstances = Array.from({ length: targetCount - prev.length }, (_, i) => {
+          const instanceId = prev.length + i;
+          const initialTanks = getInitialSpawnPositions(typedMapData, barriers, suns);
+          return {
+            id: instanceId,
+            tanks: initialTanks,
+            bullets: [],
+            lastShotTimes: { blue: 0, red: 0 },
+            gameOverWinner: null,
+            episodeReward: 0,
+            episodeLength: 0,
+            episodeStartTime: Date.now(),
+            gameType: 'ai-vs-ai' as const,
+            episodeNumber: nextEpisodeNumberRef.current++,
+          };
+        });
+        return [...prev, ...newInstances];
+      } else {
+        // Remove excess game instances (remove from end, but don't remove if user is playing)
+        const instancesToKeep = prev.slice(0, targetCount);
+        // Make sure we don't remove the game the user is playing
+        const userGameIndex = userPlayingGameId !== null 
+          ? instancesToKeep.findIndex(gi => gi.id === userPlayingGameId)
+          : -1;
+        
+        if (userGameIndex === -1 && userPlayingGameId !== null) {
+          // User's game would be removed, keep it and remove a different one
+          const userGame = prev.find(gi => gi.id === userPlayingGameId);
+          if (userGame) {
+            const withoutUserGame = prev.filter(gi => gi.id !== userPlayingGameId);
+            const toKeep = withoutUserGame.slice(0, targetCount - 1);
+            return [...toKeep, userGame];
+          }
+        }
+        
+        return instancesToKeep;
+      }
+    });
+  }, [isHeadlessMode, typedMapData, barriers, suns, userPlayingGameId]);
 
   const tankImages = useTankImages();
   
@@ -642,7 +759,7 @@ export function UnifiedTrainingView() {
           <div className="p-4 bg-white border border-gray-300 rounded shadow">
             <div className="flex items-center gap-4 flex-wrap">
               {/* Training Controls */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={async () => {
                     try {
@@ -671,9 +788,9 @@ export function UnifiedTrainingView() {
                         return;
                       }
                       
-                      // Get model version from Game Status (vX where X = Math.floor(episode / MAX_GAMES) + 1)
+                      // Get model version from Game Status (vX where X = Math.floor(episode / activeGamesCount) + 1)
                       const episode = training.stats?.episode || 0;
-                      const modelVersion = Math.floor(episode / MAX_GAMES) + 1;
+                      const modelVersion = Math.floor(episode / activeGamesCount) + 1;
                       
                       // Use ISO timestamp for model name
                       const timestamp = Date.now();
@@ -743,6 +860,25 @@ export function UnifiedTrainingView() {
                 >
                   Save Model
                 </button>
+                
+                {/* Headless Mode Checkbox */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="headless-mode"
+                    checked={isHeadlessMode}
+                    onChange={(e) => setIsHeadlessMode(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="headless-mode" className="text-sm font-medium cursor-pointer">
+                    Headless Training (8 games, auto-save every 5 min)
+                  </label>
+                  {isHeadlessMode && autoSaveCount > 0 && (
+                    <span className="text-xs text-gray-600">
+                      (Auto-saved: {autoSaveCount})
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Training Status */}
@@ -758,7 +894,7 @@ export function UnifiedTrainingView() {
 
           {/* Stats Header */}
           <div className="p-4 bg-white border border-gray-300 rounded shadow">
-            <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${MAX_GAMES}, 1fr)` }}>
+            <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(activeGamesCount, 8)}, 1fr)` }}>
               <div>
                 <div className="text-sm text-gray-600">Total Games</div>
                 <div className="text-2xl font-bold">{training.stats?.episode || 0}</div>
@@ -962,6 +1098,7 @@ export function UnifiedTrainingView() {
       </div>
 
       {/* Main Content - Games Grid */}
+      {!isHeadlessMode && (
       <div className="w-full">
         <div 
           className="grid gap-4" 
@@ -1062,6 +1199,18 @@ export function UnifiedTrainingView() {
             })}
           </div>
       </div>
+      )}
+      {isHeadlessMode && (
+        <div className="w-full p-8 bg-gray-100 border border-gray-300 rounded text-center">
+          <div className="text-lg font-semibold text-gray-700 mb-2">Headless Training Mode Active</div>
+          <div className="text-sm text-gray-600 mb-4">
+            Running {activeGamesCount} games simultaneously (no rendering for better performance)
+          </div>
+          <div className="text-sm text-gray-600">
+            Auto-save: {autoSaveCount > 0 ? `${autoSaveCount} model(s) saved` : 'Waiting for first save...'}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
