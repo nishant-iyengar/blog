@@ -28,7 +28,7 @@ export const GAME_CONFIG = {
   
   // Sun physics (50% weaker - 50% of current strength)
   sun: {
-    gravitationalConstant: 0.13 , // G - Gravitational constant for suns (50% weaker: 0.18 * 0.5 = 0.09)
+    gravitationalConstant: 0.25 , // G - Gravitational constant for suns (50% weaker: 0.18 * 0.5 = 0.09)
     mass: 120.0, // Mass of the sun (2x original)
     influenceRadius: 60, // 120 * 0.5 = 60
     minDistance: 2, // 4 * 0.5 = 2

@@ -3,14 +3,15 @@ import type { AIConfig } from './types';
 /**
  * Default AI configuration
  * Adjust these values to balance difficulty
+ * More aggressive settings to reduce stalemates during training
  */
 export const DEFAULT_AI_CONFIG: AIConfig = {
-  reactionDelay: 50, // 50ms reaction time
-  accuracyPenalty: 0.15, // 15% accuracy penalty
-  aggressiveness: 0.7, // 70% aggressive (balanced)
-  sunSkill: 0.6, // 60% skill at using suns
+  reactionDelay: 30, // 30ms reaction time (reduced from 50ms for faster reactions)
+  accuracyPenalty: 0.08, // 8% accuracy penalty (reduced from 15% to shoot more)
+  aggressiveness: 0.85, // 85% aggressive (increased from 70% to encourage closer engagement)
+  sunSkill: 0.65, // 65% skill at using suns (slightly increased)
   maxPredictionTime: 3000, // Predict up to 3 seconds ahead
-  dodgeMargin: 30, // Keep 30 pixels away from predicted bullet paths
+  dodgeMargin: 25, // Keep 25 pixels away from predicted bullet paths (reduced from 30 for more aggressive positioning)
 };
 
 /**

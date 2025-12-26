@@ -83,30 +83,20 @@ export function MultiGameTraining({ numGames = 4 }: MultiGameTrainingProps) {
       );
     },
     onGameOver: (winner: 'blue' | 'red' | null) => {
+      // Restart immediately (no delay) - reset game state
       setGameInstances((prev) =>
         prev.map((gi) => {
           if (gi.id === instanceId) {
-            const newGi = { ...gi, gameOverWinner: winner };
-            // Auto-restart after a short delay
-            setTimeout(() => {
-              setGameInstances((prev2) =>
-                prev2.map((gi2) =>
-                  gi2.id === instanceId
-                    ? {
-                        ...gi2,
-                        tanks: getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current),
-                        bullets: [],
-                        lastShotTimes: { blue: 0, red: 0 },
-                        gameOverWinner: null,
-                        episodeReward: 0,
-                        episodeLength: 0,
-                        episodeStartTime: Date.now(),
-                      }
-                    : gi2
-                )
-              );
-            }, 1000);
-            return newGi;
+            return {
+              ...gi,
+              tanks: getInitialSpawnPositions(typedMapData, barriersRef.current, sunsRef.current),
+              bullets: [],
+              lastShotTimes: { blue: 0, red: 0 },
+              gameOverWinner: null,
+              episodeReward: 0,
+              episodeLength: 0,
+              episodeStartTime: Date.now(),
+            };
           }
           return gi;
         })
@@ -181,10 +171,26 @@ export function MultiGameTraining({ numGames = 4 }: MultiGameTrainingProps) {
   useEffect(() => {
     const animationFrames: number[] = [];
 
-    gameLogics.forEach((gameLogic) => {
+    gameLogics.forEach((gameLogic, idx) => {
       if (gameLogic) {
         const gameLoop = () => {
           gameLogic.gameTick();
+          
+          // Update episode length reactively (calculated on each frame, no polling)
+          setGameInstances((prev) => {
+            const instance = prev[idx];
+            if (instance?.episodeStartTime) {
+              const elapsed = (Date.now() - instance.episodeStartTime) / 1000;
+              const newEpisodeLength = Math.floor(elapsed * 72);
+              if (instance.episodeLength !== newEpisodeLength) {
+                return prev.map((gi, i) => 
+                  i === idx ? { ...gi, episodeLength: newEpisodeLength } : gi
+                );
+              }
+            }
+            return prev;
+          });
+          
           const frameId = requestAnimationFrame(gameLoop);
           animationFrames.push(frameId);
         };
@@ -225,22 +231,9 @@ export function MultiGameTraining({ numGames = 4 }: MultiGameTrainingProps) {
     }
   }, [training.stats]);
 
-  // Update episode rewards and lengths for each game instance
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setGameInstances((prev) =>
-        prev.map((gi) => {
-          const elapsed = (Date.now() - gi.episodeStartTime) / 1000; // seconds
-          return {
-            ...gi,
-            episodeLength: Math.floor(elapsed * 72), // Approximate ticks at 72 FPS
-          };
-        })
-      );
-    }, 100); // Update every 100ms
-
-    return () => clearInterval(interval);
-  }, []);
+  // Calculate episode length on-demand (no polling)
+  // Episode length is calculated from episodeStartTime when needed
+  // This is done reactively in the game loop or when rendering
 
   return (
     <div className="flex gap-4 w-full">
@@ -328,14 +321,6 @@ export function MultiGameTraining({ numGames = 4 }: MultiGameTrainingProps) {
               <div className="flex justify-between">
                 <span className="text-gray-600">Avg Reward:</span>
                 <span className="font-mono font-semibold">{training.stats.averageReward.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total Wins:</span>
-                <span className="font-mono font-semibold">{training.stats.wins}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total Losses:</span>
-                <span className="font-mono font-semibold">{training.stats.losses}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Epsilon:</span>

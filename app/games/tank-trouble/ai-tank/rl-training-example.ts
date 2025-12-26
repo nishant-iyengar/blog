@@ -56,8 +56,6 @@ export async function trainRLAgent(
   const stats = {
     episode: 0,
     totalReward: 0,
-    wins: 0,
-    losses: 0,
   };
 
   // Example training loop structure

@@ -17,6 +17,11 @@ export interface PreviousState {
   aiLives: number;
   enemyLives: number;
   tickTime: number;
+  aiPositionHistory?: Array<{ x: number; y: number; tickTime: number }>; // Track position history for stalemate detection
+  lastMovementTime?: number; // Track when tank last moved significantly (for inactivity penalty)
+  lastShotTime?: number; // Track when tank last shot (for aggression penalty)
+  episodeStartTime?: number; // Track episode start time for timeout penalty
+  timeoutApplied?: boolean; // Track if timeout penalty has been applied
 }
 
 export interface CurrentState {
@@ -39,6 +44,12 @@ export interface RewardInfo {
     shotAccuracy?: number;
     lifeAdvantage?: number;
     movement?: number;
+    stagnationPenalty?: number;
+    stalematePenalty?: number;
+    repetitiveActionPenalty?: number;
+    timeoutPenalty?: number;
+    inactivityPenalty?: number;
+    lackOfAggressionPenalty?: number;
   };
 }
 
@@ -48,14 +59,26 @@ export interface RewardInfo {
  * This function implements reward shaping to guide the agent:
  * - Dense rewards for intermediate behaviors (dodging, positioning)
  * - Sparse rewards for major events (hits, deaths)
+ * - Automatic penalties for timeout, inactivity, and lack of aggression
  */
 export function calculateReward(
   previous: PreviousState,
   current: CurrentState,
-  action: AIDecision
+  action: AIDecision,
+  maxEpisodeTimeMs: number = 90000
 ): RewardInfo {
   let totalReward = 0;
   const breakdown: RewardInfo['breakdown'] = {};
+  
+  // Apply timeout penalty if episode exceeded max episode time (only once)
+  if (previous.episodeStartTime && !previous.timeoutApplied) {
+    const episodeElapsed = current.tickTime - previous.episodeStartTime;
+    if (episodeElapsed >= maxEpisodeTimeMs) {
+      const timeoutPenalty = -50; // 50-point loss for timeout - strongly discourages boring/long games
+      totalReward += timeoutPenalty;
+      breakdown.timeoutPenalty = timeoutPenalty;
+    }
+  }
 
   // 1. Survival reward (small positive per tick)
   // Encourages staying alive
@@ -127,28 +150,127 @@ export function calculateReward(
   }
 
   // 7. Life advantage (encourage maintaining/improving life advantage)
+  // Only reward maintaining advantage, not changes (changes are handled by hit rewards above)
   const prevLifeDiff = previous.aiLives - previous.enemyLives;
   const currLifeDiff = current.aiLives - current.enemyLives;
-  const lifeAdvantageChange = currLifeDiff - prevLifeDiff;
   
-  if (lifeAdvantageChange !== 0) {
-    // Already handled by hit rewards, but add small bonus for maintaining advantage
-    const lifeAdvantageReward = currLifeDiff * 0.5;
-    totalReward += lifeAdvantageReward - (prevLifeDiff * 0.5);
-    breakdown.lifeAdvantage = lifeAdvantageChange * 0.5;
+  // Small bonus for having life advantage (maintains incentive when ahead)
+  if (currLifeDiff > 0) {
+    const lifeAdvantageReward = 0.02; // Small per-tick bonus when ahead
+    totalReward += lifeAdvantageReward;
+    breakdown.lifeAdvantage = lifeAdvantageReward;
   }
 
   // 8. Movement reward (encourage active movement, penalize staying still)
   const moved = getDistance(previous.aiTank, current.aiTank) > 0.1;
+  const movementDistance = getDistance(previous.aiTank, current.aiTank);
+  
   if (moved) {
-    const movementReward = 0.05;
+    // Reward proportional to distance moved (encourage significant movement)
+    const movementReward = Math.min(0.15, movementDistance * 0.0015); // Increased reward for movement
     totalReward += movementReward;
     breakdown.movement = movementReward;
   } else {
-    // Small penalty for not moving (but not too harsh)
-    const stagnationPenalty = -0.01;
+    // Increased penalty for not moving (stalling) - stronger penalty to encourage movement
+    const stagnationPenalty = -0.1; // Increased from -0.05 - now 1.5x the movement reward
     totalReward += stagnationPenalty;
+    breakdown.stagnationPenalty = stagnationPenalty;
     breakdown.movement = stagnationPenalty;
+  }
+
+  // 9. Stalemate detection (both tanks in similar positions, not making progress)
+  const tankDistance = getDistance(current.aiTank, current.enemyTank);
+  const distanceChange = Math.abs(tankDistance - getDistance(previous.aiTank, previous.enemyTank));
+  
+  // Check if both tanks are in a stalemate situation
+  // Stalemate: tanks aren't changing relative positions much, and AI isn't moving much
+  // This catches both close-range standoffs and long-range circling
+  const isStalemate = 
+    distanceChange < 5 && // Distance between tanks isn't changing much
+    movementDistance < 2; // AI tank isn't moving much
+  
+  if (isStalemate) {
+    // Stronger penalty for stalemate - encourages breaking out of deadlock
+    const stalematePenalty = -0.2; // Increased from -0.1 to discourage stalemates
+    totalReward += stalematePenalty;
+    breakdown.stalematePenalty = stalematePenalty;
+  }
+
+  // 10. Repetitive action penalty (shooting without movement or progress)
+  // Penalize if shooting repeatedly without moving or making progress
+  if (action.shouldShoot && !moved && current.bullets.length >= previous.bullets.length) {
+    // Shooting but not moving and bullet count isn't decreasing (bullets colliding or missing)
+    const repetitiveActionPenalty = -0.03;
+    totalReward += repetitiveActionPenalty;
+    breakdown.repetitiveActionPenalty = repetitiveActionPenalty;
+  }
+
+  // 11. Position diversity reward (encourage exploring different positions)
+  // Track if tank has been in similar position recently (if history available)
+  if (previous.aiPositionHistory && previous.aiPositionHistory.length > 0) {
+    const recentPositions = previous.aiPositionHistory.slice(-10); // Last 10 positions
+    const currentPos = { x: current.aiTank.x, y: current.aiTank.y };
+    
+    // Check if current position is similar to recent positions
+    const isRepeatingPosition = recentPositions.some(pos => {
+      const dist = Math.sqrt(
+        Math.pow(currentPos.x - pos.x, 2) + Math.pow(currentPos.y - pos.y, 2)
+      );
+      return dist < 30; // Within 30 pixels of a recent position
+    });
+    
+    if (!isRepeatingPosition && moved) {
+      // Reward for moving to a new area
+      const diversityReward = 0.02;
+      totalReward += diversityReward;
+      breakdown.movement = (breakdown.movement || 0) + diversityReward;
+    }
+  }
+
+  // 12. Inactivity penalty (tank sitting still for more than 1.5 seconds)
+  const INACTIVITY_THRESHOLD = 1500; // 1.5 seconds in milliseconds (reduced from 3s)
+  const SIGNIFICANT_MOVEMENT_THRESHOLD = 5; // pixels - movement must be at least this much to count
+  
+  if (moved && movementDistance >= SIGNIFICANT_MOVEMENT_THRESHOLD) {
+    // Tank moved significantly, update last movement time
+    // This will be tracked in the environment state
+  } else {
+    // Tank didn't move significantly, check if it's been inactive too long
+    const lastMovementTime = previous.lastMovementTime || previous.episodeStartTime || previous.tickTime;
+    const timeSinceLastMovement = current.tickTime - lastMovementTime;
+    
+    if (timeSinceLastMovement >= INACTIVITY_THRESHOLD) {
+      // Stronger penalty that scales with inactivity duration
+      const inactivityDuration = timeSinceLastMovement - INACTIVITY_THRESHOLD;
+      const basePenalty = -0.3; // Increased from -0.2
+      const scalingPenalty = Math.min(-0.5, -0.3 - (inactivityDuration / 1000) * 0.1); // Scales up to -0.5
+      totalReward += scalingPenalty;
+      breakdown.inactivityPenalty = scalingPenalty;
+    }
+  }
+
+  // 13. Lack of aggression penalty
+  // Penalize if tank is not being aggressive enough (not shooting, not moving toward enemy, etc.)
+  const AGGRESSION_CHECK_INTERVAL = 2000; // Check aggression over last 2 seconds
+  const timeSinceLastShot = previous.lastShotTime ? current.tickTime - previous.lastShotTime : Infinity;
+  
+  // Check if tank is being passive:
+  // - Not shooting for a while (more than 2 seconds)
+  // - Moving away from enemy
+  // - Not closing distance to enemy
+  const isPassive = 
+    timeSinceLastShot > AGGRESSION_CHECK_INTERVAL && // Not shooting
+    !action.shouldShoot && // Not about to shoot
+    movementDistance < 2; // Not moving much
+  
+  // Also check if moving away from enemy
+  const distanceToEnemyChange = currDistance - prevDistance;
+  const isMovingAway = distanceToEnemyChange > 10; // Moving away from enemy
+  
+  if (isPassive || (isMovingAway && !action.shouldShoot)) {
+    const lackOfAggressionPenalty = -0.15; // Increased from -0.1 to encourage more aggression
+    totalReward += lackOfAggressionPenalty;
+    breakdown.lackOfAggressionPenalty = lackOfAggressionPenalty;
   }
 
   return {

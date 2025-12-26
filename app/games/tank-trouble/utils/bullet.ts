@@ -70,16 +70,10 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
       
       // Check if bullets are actually colliding (within collision size)
       if (distance < GAME_CONFIG.bullet.collisionSize) {
-        // Both bullets start exploding
-        if (!bullet.exploding) {
-          bullets[i] = { ...bullet, exploding: true, explosionStartTime: tickTime };
-          bulletsToRemove.add(i);
-        }
-        if (!otherBullet.exploding) {
-          bullets[j] = { ...otherBullet, exploding: true, explosionStartTime: tickTime };
-          bulletsToRemove.add(j);
-        }
-        break; // This bullet is now exploding, no need to check more collisions
+        // Both bullets are removed immediately (no animation)
+        bulletsToRemove.add(i);
+        bulletsToRemove.add(j);
+        break; // Both bullets removed, no need to check more collisions
       }
     }
   }
@@ -90,14 +84,9 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     
     const bullet = bullets[i];
     
-    // Check if bullet is exploding
+    // Remove exploding bullets immediately (no animation)
     if (bullet.exploding) {
-      const explosionDuration = 300; // 300ms explosion animation
-      if (bullet.explosionStartTime && tickTime - bullet.explosionStartTime < explosionDuration) {
-        // Keep exploding bullet for animation
-        updatedBullets.push(bullet);
-      }
-      continue; // Remove after animation
+      continue;
     }
 
     // Check bullet age - bullets fade away instead of exploding
@@ -224,8 +213,7 @@ export function updateBullets(params: UpdateBulletsParams): UpdateBulletsResult 
     }
     
     if (hitTank) {
-      // Start explosion animation
-      updatedBullets.push({ ...bullet, exploding: true, explosionStartTime: tickTime });
+      // Bullet hits tank - remove immediately (no animation)
       continue;
     }
 

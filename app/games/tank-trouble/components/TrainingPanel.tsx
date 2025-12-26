@@ -47,7 +47,7 @@ export function TrainingPanel({ onTrainingStateChange, training: externalTrainin
 
   const handleSave = async () => {
     const timestamp = Date.now();
-    await training.saveModel(`tank-ai-${timestamp}`);
+    await training.saveModel(`indexeddb://tank-ai-${timestamp}`);
     alert(`Model saved! (tank-ai-${timestamp})`);
   };
 
@@ -116,47 +116,6 @@ export function TrainingPanel({ onTrainingStateChange, training: externalTrainin
         {/* TODO: Implement headless mode later - this will allow faster training by skipping rendering
             When implemented, add a checkbox here to toggle headless mode */}
       </div>
-
-      {/* Statistics */}
-      {training.stats && (
-        <div className="mt-4 p-3 bg-gray-50 rounded">
-          <h4 className="font-semibold mb-2">Training Statistics</h4>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-gray-600">Episode:</span>
-              <span className="ml-2 font-mono">{training.stats.episode}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Reward:</span>
-              <span className="ml-2 font-mono">{training.stats.episodeReward.toFixed(2)}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Avg Reward:</span>
-              <span className="ml-2 font-mono">{training.stats.averageReward.toFixed(2)}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Wins:</span>
-              <span className="ml-2 font-mono">{training.stats.wins}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Losses:</span>
-              <span className="ml-2 font-mono">{training.stats.losses}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Epsilon:</span>
-              <span className="ml-2 font-mono">{training.stats.epsilon.toFixed(3)}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Loss:</span>
-              <span className="ml-2 font-mono">{training.stats.loss.toFixed(4)}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Length:</span>
-              <span className="ml-2 font-mono">{training.stats.episodeLength}</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Status */}
       <div className="mt-4 text-sm">

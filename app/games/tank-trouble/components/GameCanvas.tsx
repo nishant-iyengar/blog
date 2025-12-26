@@ -62,12 +62,12 @@ export function GameCanvas({
     canvas.width = width * scale;
     canvas.height = height * scale;
     
-    // Scale the context so all drawing operations are scaled
+    // Reset transform matrix and scale the context
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(scale, scale);
 
-    const now = Date.now(); // Current time for animations
-
-    // Clear canvas
+    // Clear canvas completely
+    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = '#2D3748';
     ctx.fillRect(0, 0, width, height);
 
@@ -141,63 +141,16 @@ export function GameCanvas({
       ctx.stroke();
     }
 
-    // Draw tanks
-    for (const tank of tanks) {
-      // Draw tank explosion
-      if (tank.exploding && tank.explosionStartTime) {
-        const explosionDuration = 500;
-        const elapsed = now - tank.explosionStartTime;
-        if (elapsed < explosionDuration) {
-          const progress = elapsed / explosionDuration;
-          const maxRadius = TANK_SIZE * 2;
-          const currentRadius = maxRadius * progress;
-          const alpha = 1 - progress;
-          
-          // Draw explosion particles
-          for (let i = 0; i < 8; i++) {
-            const angle = (Math.PI * 2 * i) / 8;
-            const distance = currentRadius * (0.5 + Math.random() * 0.5);
-            const x = tank.x + TANK_SIZE / 2 + Math.cos(angle) * distance;
-            const y = tank.y + TANK_SIZE / 2 + Math.sin(angle) * distance;
-            
-            ctx.fillStyle = `rgba(255, ${100 + Math.random() * 155}, 0, ${alpha})`;
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        continue; // Don't draw tank while exploding
-      }
-      
-      // Draw respawn animation
-      if (tank.respawning && tank.respawnStartTime && tank.respawnTargetX !== undefined) {
-        const respawnDuration = 300;
-        const elapsed = now - tank.respawnStartTime;
-        if (elapsed < respawnDuration) {
-          const progress = elapsed / respawnDuration;
-          const alpha = progress;
-          const scale = 0.5 + progress * 0.5;
-          
-          ctx.save();
-          ctx.globalAlpha = alpha;
-          ctx.translate(tank.x + TANK_SIZE / 2, tank.y + TANK_SIZE / 2);
-          ctx.scale(scale, scale);
-          ctx.rotate((tank.angle * Math.PI) / 180);
-          ctx.translate(-TANK_SIZE / 2, -TANK_SIZE / 2);
-          
-          const tankImage = tank.color === 'blue' ? tankImages.blue : tankImages.red;
-          if (tankImage) {
-            ctx.drawImage(tankImage, 0, 0, TANK_SIZE, TANK_SIZE);
-          } else {
-            ctx.fillStyle = tank.color === 'blue' ? '#3B82F6' : '#EF4444';
-            ctx.fillRect(0, 0, TANK_SIZE, TANK_SIZE);
-          }
-          ctx.restore();
-          continue;
-        }
-      }
-      
-      if (tank.lives <= 0) continue;
+    // Draw tanks (no animations)
+    // Only draw valid tanks (exactly 2 tanks expected: blue and red)
+    // Filter to ensure we only have valid tanks with proper positions
+    const validTanks = tanks
+      .filter(tank => tank && tank.lives !== undefined && tank.x !== undefined && tank.y !== undefined && tank.color)
+      .slice(0, 2); // Only draw first 2 tanks to prevent flickering from stale data
+    
+    for (const tank of validTanks) {
+      // Skip tanks with 0 lives or invalid positions
+      if (tank.lives <= 0 || tank.x === undefined || tank.y === undefined) continue;
 
       ctx.save();
       ctx.translate(tank.x + TANK_SIZE / 2, tank.y + TANK_SIZE / 2);
@@ -234,28 +187,15 @@ export function GameCanvas({
       }
     }
 
-    // Draw bullets
+    // Draw bullets (no explosion animations)
     for (const bullet of bullets) {
-      // Handle bullet explosion (from collisions)
-      if (bullet.exploding && bullet.explosionStartTime) {
-        const explosionDuration = 300;
-        const elapsed = now - bullet.explosionStartTime;
-        if (elapsed < explosionDuration) {
-          const progress = elapsed / explosionDuration;
-          const maxRadius = GAME_CONFIG.bullet.radius * 4;
-          const currentRadius = maxRadius * progress;
-          const alpha = 1 - progress;
-          
-          ctx.fillStyle = `rgba(255, ${100 + Math.random() * 155}, 0, ${alpha})`;
-          ctx.beginPath();
-          ctx.arc(bullet.x, bullet.y, currentRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      // Skip exploding bullets (they're removed immediately, no animation)
+      if (bullet.exploding) {
         continue;
       }
       
       // Calculate fade alpha for bullets that are expiring (after 7 seconds)
-      const age = now - bullet.createdAt;
+      const age = Date.now() - bullet.createdAt;
       const fadeDuration = GAME_CONFIG.bullet.fadeDuration;
       let alpha = 1;
       

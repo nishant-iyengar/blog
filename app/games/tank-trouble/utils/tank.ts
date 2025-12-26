@@ -2,7 +2,7 @@ import type { Tank, Bullet, Barrier, Sun } from '@/app/games/tank-trouble/types'
 import { TANK_SPEED, ROTATION_SPEED, TANK_SIZE, TANK_COLLISION_SIZE, BULLET_SPEED, GAME_CONFIG, MAX_BULLETS_PER_TANK } from '@/app/games/tank-trouble/config';
 import { canMoveTo } from '@/app/games/tank-trouble/utils/collision';
 
-interface UpdateTankParams {
+export interface UpdateTankParams {
   tank: Tank;
   tankIndex: number;
   keys: Set<string>;
@@ -16,7 +16,7 @@ interface UpdateTankParams {
   allTanks: Tank[];
 }
 
-interface UpdateTankResult {
+export interface UpdateTankResult {
   updatedTank: Tank;
   newBullets: Bullet[];
   lastShotTime: number;

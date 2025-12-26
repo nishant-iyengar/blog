@@ -24,32 +24,31 @@ export function calculateOptimalPosition(
   const dy = enemyCenterY - aiCenterY;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // Ideal distance based on aggressiveness (closer = more aggressive)
-  const idealDistance = 100 + (1 - aggressiveness) * 100;
+  // Much more aggressive: always move toward enemy, minimal ideal distance
+  // Reduced ideal distance significantly to encourage close combat
+  const idealDistance = 50 + (1 - aggressiveness) * 50; // Reduced from 100 + (1-aggressiveness)*100
 
-  // Calculate angle toward/away from enemy
+  // Calculate angle toward enemy (always approach, never retreat)
   const angleToEnemy = (Math.atan2(dy, dx) * 180) / Math.PI;
 
-  // Calculate desired position (maintain ideal distance)
+  // Always try to move closer to enemy (removed retreat logic)
+  // Only stop approaching if already very close (within 30 pixels)
   let targetX = enemyCenterX;
   let targetY = enemyCenterY;
 
-  if (distance > idealDistance * 1.1) {
-    // Too far, move closer
+  if (distance > 30) {
+    // Always move closer if not extremely close
     const approachAngle = angleToEnemy;
+    // Move to ideal distance, but if already closer, still move forward (just slower)
+    const targetDistance = Math.min(distance * 0.8, idealDistance); // Always reduce distance by 20% minimum
     targetX =
-      enemyCenterX - Math.cos((approachAngle * Math.PI) / 180) * idealDistance;
+      enemyCenterX - Math.cos((approachAngle * Math.PI) / 180) * targetDistance;
     targetY =
-      enemyCenterY - Math.sin((approachAngle * Math.PI) / 180) * idealDistance;
-  } else if (distance < idealDistance * 0.9) {
-    // Too close, move away slightly
-    const retreatAngle = (angleToEnemy + 180) % 360;
-    targetX =
-      enemyCenterX -
-      Math.cos((retreatAngle * Math.PI) / 180) * idealDistance;
-    targetY =
-      enemyCenterY -
-      Math.sin((retreatAngle * Math.PI) / 180) * idealDistance;
+      enemyCenterY - Math.sin((approachAngle * Math.PI) / 180) * targetDistance;
+  } else {
+    // Very close - stay at current distance but keep facing enemy
+    targetX = aiCenterX;
+    targetY = aiCenterY;
   }
 
   // Clamp to map bounds

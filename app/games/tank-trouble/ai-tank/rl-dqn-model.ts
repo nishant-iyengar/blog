@@ -61,6 +61,7 @@ export class DQNAgent {
   private epsilon: number;
   private stepCount: number = 0;
   private trainingInProgress: Promise<number> | null = null; // Active training promise - null means no training
+  private isDisposed: boolean = false; // Track if agent has been disposed
 
   constructor(config: Partial<DQNConfig> = {}) {
     this.config = { ...DEFAULT_DQN_CONFIG, ...config };
@@ -122,6 +123,13 @@ export class DQNAgent {
   }
 
   /**
+   * Check if networks are valid and not disposed
+   */
+  private areNetworksValid(): boolean {
+    return !this.isDisposed && this.qNetwork !== null && this.targetNetwork !== null;
+  }
+
+  /**
    * Select action using epsilon-greedy policy
    */
   async selectAction(observation: Observation, training: boolean = true): Promise<number> {
@@ -166,37 +174,33 @@ export class DQNAgent {
    * Train on a batch of experiences
    * 
    * Note: This method prevents concurrent training calls by using a promise-based lock.
-   * The promise is created and assigned synchronously before any async work begins.
    * If training is already in progress, this call will wait for it and skip (return 0).
    */
   async train(experiences: Experience[]): Promise<number> {
-    if (!this.qNetwork || !this.targetNetwork || experiences.length === 0) {
+    if (!this.areNetworksValid() || experiences.length === 0) {
       return 0;
     }
 
     // If training is already in progress, wait for it and skip this call
-    const currentTraining = this.trainingInProgress;
-    if (currentTraining) {
+    if (this.trainingInProgress) {
       try {
-        await currentTraining;
+        await this.trainingInProgress;
       } catch (error) {
         // Ignore errors from previous training - we're just waiting
       }
       return 0;
     }
 
-    // Create promise resolver functions
+    // Create and assign the promise SYNCHRONOUSLY before any async work
     let resolveTraining: ((value: number) => void) | undefined;
     let rejectTraining: ((error: any) => void) | undefined;
     
-    // Create and assign the promise SYNCHRONOUSLY before any async work
     this.trainingInProgress = new Promise<number>((resolve, reject) => {
       resolveTraining = resolve;
       rejectTraining = reject;
     });
 
-    // Now start the async training work
-    // Pass the promise so executeTraining can verify it's still the active one
+    // Start async training work
     this.executeTraining(experiences, this.trainingInProgress)
       .then((result) => {
         this.trainingInProgress = null;
@@ -208,11 +212,11 @@ export class DQNAgent {
       });
 
     try {
-      const result = await this.trainingInProgress;
-      return result;
+      return await this.trainingInProgress;
     } catch (error) {
-      // Re-throw error
-      throw error;
+      // Return 0 on error instead of throwing - training errors shouldn't crash the app
+      console.error('Training error:', error);
+      return 0;
     }
   }
 
@@ -220,7 +224,6 @@ export class DQNAgent {
    * Internal method that performs the actual training
    */
   private async executeTraining(experiences: Experience[], currentTrainingPromise: Promise<number>): Promise<number> {
-
     // Prepare batch
     const batchSize = Math.min(experiences.length, this.config.batchSize);
     const states: number[][] = [];
@@ -238,61 +241,69 @@ export class DQNAgent {
       dones.push(exp.done);
     }
 
-    // Compute targets
+    // Create tensors
     const statesTensor = tf.tensor2d(states);
     const nextStatesTensor = tf.tensor2d(nextStates);
     
-    // Current Q-values
-    const currentQValues = this.qNetwork.predict(statesTensor) as tf.Tensor;
-    
-    // Next Q-values from target network
-    const nextQValues = this.targetNetwork.predict(nextStatesTensor) as tf.Tensor;
-    
-    const currentQArray = await currentQValues.array() as number[][];
-    const nextQArray = await nextQValues.array() as number[][];
-    
-    // Compute target Q-values
-    const targets: number[][] = [];
-    for (let i = 0; i < batchSize; i++) {
-      const target = [...currentQArray[i]];
-      const maxNextQ = Math.max(...nextQArray[i]);
-      const targetQ = rewards[i] + (dones[i] ? 0 : this.config.gamma * maxNextQ);
-      target[actions[i]] = targetQ;
-      targets.push(target);
-    }
-
-    const targetsTensor = tf.tensor2d(targets);
+    // Track all tensors for cleanup
+    const tensorsToDispose: tf.Tensor[] = [statesTensor, nextStatesTensor];
 
     try {
-      // Double-check that we're still the active training call
-      // This prevents race conditions where multiple calls get past the initial check
-      if (this.trainingInProgress !== currentTrainingPromise) {
-        // Another training call has started - abort this one
-        statesTensor.dispose();
-        nextStatesTensor.dispose();
-        currentQValues.dispose();
-        nextQValues.dispose();
-        targetsTensor.dispose();
+      // Verify we're still the active training call and networks are valid
+      if (!this.areNetworksValid() || this.trainingInProgress !== currentTrainingPromise) {
         return 0;
       }
 
-      // Train - this is the critical section that must be exclusive
-      const history = await this.qNetwork.fit(statesTensor, targetsTensor, {
+      // Get Q-values from both networks
+      const currentQValues = this.qNetwork!.predict(statesTensor) as tf.Tensor;
+      const nextQValues = this.targetNetwork!.predict(nextStatesTensor) as tf.Tensor;
+      tensorsToDispose.push(currentQValues, nextQValues);
+
+      // Extract arrays (this is async, but if network is disposed, it will throw)
+      const currentQArray = await currentQValues.array() as number[][];
+      const nextQArray = await nextQValues.array() as number[][];
+
+      // Verify again after async operation
+      if (!this.areNetworksValid() || this.trainingInProgress !== currentTrainingPromise) {
+        return 0;
+      }
+
+      // Compute target Q-values
+      const targets: number[][] = [];
+      for (let i = 0; i < batchSize; i++) {
+        const target = [...currentQArray[i]];
+        const maxNextQ = Math.max(...nextQArray[i]);
+        const targetQ = rewards[i] + (dones[i] ? 0 : this.config.gamma * maxNextQ);
+        target[actions[i]] = targetQ;
+        targets.push(target);
+      }
+
+      const targetsTensor = tf.tensor2d(targets);
+      tensorsToDispose.push(targetsTensor);
+
+      // Final check before training
+      if (!this.areNetworksValid() || this.trainingInProgress !== currentTrainingPromise) {
+        return 0;
+      }
+
+      // Train the network
+      const history = await this.qNetwork!.fit(statesTensor, targetsTensor, {
         epochs: 1,
         verbose: 0,
         batchSize: batchSize,
       });
 
-      const loss = Array.isArray(history.history.loss) 
-        ? history.history.loss[0] 
-        : (history.history.loss as number);
-
-      // Cleanup
-      statesTensor.dispose();
-      nextStatesTensor.dispose();
-      currentQValues.dispose();
-      nextQValues.dispose();
-      targetsTensor.dispose();
+      // Extract loss value
+      let loss: number = 0;
+      if (Array.isArray(history.history.loss)) {
+        loss = history.history.loss[0] as number;
+      } else if (typeof history.history.loss === 'number') {
+        loss = history.history.loss;
+      } else if (history.history.loss && typeof history.history.loss === 'object' && 'dataSync' in history.history.loss) {
+        const lossTensor = history.history.loss as tf.Tensor;
+        loss = lossTensor.dataSync()[0];
+        lossTensor.dispose();
+      }
 
       // Update epsilon
       this.epsilon = Math.max(
@@ -307,16 +318,22 @@ export class DQNAgent {
       }
 
       return loss;
-    } catch (error) {
-      // Cleanup on error
-      statesTensor.dispose();
-      nextStatesTensor.dispose();
-      currentQValues.dispose();
-      nextQValues.dispose();
-      targetsTensor.dispose();
-      
-      // Re-throw error for logging
-      throw error;
+    } catch (error: any) {
+      // If network was disposed, silently return 0
+      // Otherwise, log the error but don't throw (training errors shouldn't crash)
+      if (!error?.message?.includes('disposed')) {
+        console.error('Training error:', error);
+      }
+      return 0;
+    } finally {
+      // Always cleanup tensors
+      tensorsToDispose.forEach(tensor => {
+        try {
+          tensor.dispose();
+        } catch (e) {
+          // Ignore disposal errors
+        }
+      });
     }
   }
 
@@ -343,31 +360,120 @@ export class DQNAgent {
    * Save model
    */
   async save(path: string): Promise<void> {
-    if (!this.qNetwork) {
-      throw new Error('Network not initialized');
+    if (typeof window === 'undefined') {
+      throw new Error('Cannot save model: IndexedDB is only available in the browser (not during SSR)');
     }
-    await this.qNetwork.save(path);
+    
+    if (!this.qNetwork) {
+      throw new Error('Network not initialized. Cannot save model.');
+    }
+    
+    try {
+      console.log('DQNAgent: Saving model to', path);
+      await this.qNetwork.save(path);
+      console.log('DQNAgent: Model saved successfully to', path);
+      
+      // Verify the model was actually saved
+      const { modelExists } = await import('./rl-model-storage');
+      const exists = await modelExists(path);
+      
+      if (!exists) {
+        console.warn('DQNAgent: Warning - Model save completed but verification failed. The model may not be accessible.');
+        console.warn('DQNAgent: This could be a timing issue. Try waiting a moment and checking again.');
+      } else {
+        console.log('DQNAgent: Model verification successful - model exists in IndexedDB');
+      }
+    } catch (error) {
+      console.error('DQNAgent: Error saving model:', error);
+      throw error;
+    }
   }
 
   /**
    * Load model
    */
   async load(path: string): Promise<void> {
-    this.qNetwork = await tf.loadLayersModel(path);
-    this.targetNetwork = this.createNetwork();
-    this.updateTargetNetwork();
-  }
-
-  /**
-   * Dispose resources
-   */
-  dispose(): void {
+    if (typeof window === 'undefined') {
+      throw new Error('Cannot load model: IndexedDB is only available in the browser (not during SSR)');
+    }
+    
+    // Wait for any in-progress training to complete before loading new model
+    if (this.trainingInProgress) {
+      await this.trainingInProgress.catch(() => {
+        // Ignore errors from previous training
+      });
+    }
+    
+    // Verify model exists before attempting to load
+    const { modelExists, listAvailableModelPaths } = await import('./rl-model-storage');
+    const exists = await modelExists(path);
+    
+    if (!exists) {
+      // Get available models for better error message
+      const availablePaths = await listAvailableModelPaths();
+      const cleanPath = path.replace('indexeddb://', '');
+      
+      let errorMessage = `Cannot find model with path '${path}' in IndexedDB.\n`;
+      errorMessage += `Looking for object store: '${cleanPath}'\n\n`;
+      
+      if (availablePaths.length > 0) {
+        errorMessage += `Available models in IndexedDB:\n`;
+        availablePaths.forEach(p => {
+          errorMessage += `  - ${p}\n`;
+        });
+      } else {
+        errorMessage += `No models found in IndexedDB. Make sure you've saved a model first.`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    console.log('DQNAgent: Loading model from', path);
+    
+    try {
+    const newQNetwork = await tf.loadLayersModel(path);
+    const newTargetNetwork = this.createNetwork();
+    
+    // Dispose old networks only after new ones are loaded
     if (this.qNetwork) {
       this.qNetwork.dispose();
     }
     if (this.targetNetwork) {
       this.targetNetwork.dispose();
     }
+    
+    this.qNetwork = newQNetwork;
+    this.targetNetwork = newTargetNetwork;
+    this.updateTargetNetwork();
+    console.log('DQNAgent: Model loaded successfully from', path);
+    } catch (error) {
+      console.error('DQNAgent: Error loading model:', error);
+      throw new Error(`Failed to load model from ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Dispose resources
+   */
+  dispose(): void {
+    this.isDisposed = true;
+    
+    // Wait for any in-progress training to complete before disposing
+    const disposeNetworks = () => {
+      if (this.qNetwork) {
+        this.qNetwork.dispose();
+      }
+      if (this.targetNetwork) {
+        this.targetNetwork.dispose();
+      }
+    };
+
+    if (this.trainingInProgress) {
+      this.trainingInProgress
+        .then(disposeNetworks)
+        .catch(disposeNetworks); // Dispose even if training fails
+    } else {
+      disposeNetworks();
+    }
   }
 }
-

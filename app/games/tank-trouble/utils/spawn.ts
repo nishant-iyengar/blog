@@ -40,6 +40,7 @@ export function generateRandomSpawnPosition(
 
 /**
  * Generate random initial spawn positions for both tanks
+ * Explicitly excludes all death/respawn state to ensure clean tank state
  */
 export function getInitialSpawnPositions(
   mapData: TankTroubleMapData,
@@ -50,8 +51,36 @@ export function getInitialSpawnPositions(
   const redSpawn = generateRandomSpawnPosition(mapData, barriers, [], suns, blueSpawn);
   
   return [
-    { x: blueSpawn.x, y: blueSpawn.y, angle: blueSpawn.angle, lives: GAME_CONFIG.tank.lives, color: 'blue' },
-    { x: redSpawn.x, y: redSpawn.y, angle: redSpawn.angle, lives: GAME_CONFIG.tank.lives, color: 'red' },
+    { 
+      x: blueSpawn.x, 
+      y: blueSpawn.y, 
+      angle: blueSpawn.angle, 
+      lives: GAME_CONFIG.tank.lives, 
+      color: 'blue',
+      // Explicitly exclude death/respawn state
+      exploding: undefined,
+      explosionStartTime: undefined,
+      respawning: undefined,
+      respawnStartTime: undefined,
+      respawnTargetX: undefined,
+      respawnTargetY: undefined,
+      respawnTargetAngle: undefined,
+    },
+    { 
+      x: redSpawn.x, 
+      y: redSpawn.y, 
+      angle: redSpawn.angle, 
+      lives: GAME_CONFIG.tank.lives, 
+      color: 'red',
+      // Explicitly exclude death/respawn state
+      exploding: undefined,
+      explosionStartTime: undefined,
+      respawning: undefined,
+      respawnStartTime: undefined,
+      respawnTargetX: undefined,
+      respawnTargetY: undefined,
+      respawnTargetAngle: undefined,
+    },
   ];
 }
 
