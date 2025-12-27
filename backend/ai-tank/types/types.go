@@ -111,8 +111,15 @@ type ObservationConfig struct {
 	Size             int `json:"size"`
 }
 
+type ActionDefinition struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 type ActionConfig struct {
-	NumDiscreteActions int `json:"numDiscreteActions"`
+	NumDiscreteActions int                `json:"numDiscreteActions"`
+	Actions            []ActionDefinition `json:"actions"`
 }
 
 type DQNConfig struct {
@@ -240,5 +247,7 @@ type ModelMetadata struct {
 	Timestamp string  `json:"timestamp"`
 	EvalScore float64 `json:"evalScore"`
 	Episodes  int     `json:"episodes"`
+	IsDefault *bool   `json:"isDefault,omitempty"` // nil = false, true = this is a default model
+	Source    string  `json:"source,omitempty"`    // "imitation_learning", "rl_training", etc.
 }
 

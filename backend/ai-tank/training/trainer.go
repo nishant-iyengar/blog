@@ -45,10 +45,18 @@ type TrainingStats struct {
 	LastUpdate    time.Time
 }
 
+// ModelStorage is an interface for loading/saving model weights
+// This breaks the import cycle between training and api packages
+type ModelStorage interface {
+	GetLatestModel() (*types.ModelWeights, error)
+}
+
 // NewTrainer creates a new trainer
 // useSelfPlay: if true, both tanks use RL agents (self-play)
 // useImitationLearning: if true, pre-train using rule-based demonstrations
-func NewTrainer(useSelfPlay bool, useImitationLearning bool) (*Trainer, error) {
+// modelStorage: optional storage for loading default model weights
+// demoStorage: optional storage for loading human demonstrations
+func NewTrainer(useSelfPlay bool, useImitationLearning bool, modelStorage ModelStorage, demoStorage DemonstrationStorage) (*Trainer, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		return nil, err
@@ -57,19 +65,85 @@ func NewTrainer(useSelfPlay bool, useImitationLearning bool) (*Trainer, error) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	agent := model.NewDQNAgent(&cfg.RL.DQN, rng)
 
-	// Optional: Pre-train using imitation learning (behavioral cloning)
-	if useImitationLearning {
-		// Generate demonstrations from rule-based AI and pre-train
-		// This gives the agent a better starting point than random weights
-		// Increased to 50 episodes for better model seeding
-		err := ImitationLearning(agent, 50, rng) // 50 episodes of demonstrations
+	// REQUIRED: Load best default model weights from storage before training
+	// Training MUST start from human demonstration baseline - HARD ERROR if not available
+	if modelStorage == nil {
+		return nil, fmt.Errorf("FATAL: modelStorage is required but was nil - cannot load default model. Training requires a baseline model from human demonstrations")
+	}
+
+	// Try to get best default model (from imitation learning/human demonstrations)
+	defaultStorage, ok := modelStorage.(interface {
+		GetBestDefaultModel() (*types.ModelWeights, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("FATAL: modelStorage does not implement GetBestDefaultModel() - cannot load default model. Training requires a baseline model from human demonstrations")
+	}
+
+	defaultWeights, err := defaultStorage.GetBestDefaultModel()
+	if err != nil {
+		return nil, fmt.Errorf("FATAL: No default model found in database. Training requires a baseline model from human demonstrations.\n"+
+			"Error: %v\n"+
+			"To fix this:\n"+
+			"1. Play some games on the website in 'Play Your AI' mode\n"+
+			"2. This will collect human demonstrations\n"+
+			"3. The training service will automatically create a default model from these demonstrations\n"+
+			"4. Then restart the training service", err)
+	}
+
+	if defaultWeights == nil {
+		return nil, fmt.Errorf("FATAL: Default model is nil. Training requires a baseline model from human demonstrations.\n" +
+			"Please play some games on the website first to collect demonstrations.")
+	}
+
+	// Load the default model weights
+	if err := agent.SetWeights(defaultWeights); err != nil {
+		return nil, fmt.Errorf("failed to load default model weights: %w", err)
+	}
+
+	fmt.Printf("✅ Loaded best default model from storage (Episodes: %d, Score: %.2f, Source: %s)\n",
+		defaultWeights.Metadata.Episodes, defaultWeights.Metadata.EvalScore, defaultWeights.Metadata.Source)
+	// Start with lower epsilon since we're starting from a trained baseline
+	agent.SetEpsilon(0.2) // Low epsilon - model already has knowledge
+
+	// Optional: Re-run imitation learning to incorporate any new demonstrations
+	// Note: We already loaded the default model above, so this will refine it if new demos exist
+	if useImitationLearning && demoStorage != nil {
+		// Re-run imitation learning with any new demonstrations
+		// This allows incorporating new human demonstrations into the existing default model
+		err := ImitationLearning(agent, 50, rng, demoStorage, true) // 50 episodes of demonstrations, prefer human demos
 		if err != nil {
-			// Log but don't fail - imitation learning is optional
-			fmt.Printf("Warning: Imitation learning failed: %v\n", err)
+			// Log but don't fail - we already have a default model loaded
+			fmt.Printf("Warning: Additional imitation learning failed (will continue with loaded default): %v\n", err)
 		} else {
-			fmt.Printf("✅ Imitation learning completed - model pre-trained with rule-based demonstrations\n")
+			fmt.Printf("✅ Additional imitation learning completed - refined model with new demonstrations\n")
+
+			// Evaluate the refined model
+			// For now, we'll use a placeholder eval score - can be improved later
+			refinedEvalScore := 10.0 // Placeholder - actual eval would run test games
+
+			// Save as default model if it's better than existing
+			if defaultStorage, ok := modelStorage.(interface {
+				SaveDefaultModelIfBetter(*types.ModelWeights) (bool, error)
+			}); ok {
+				weights := agent.GetWeights()
+				weights.Metadata.Source = "imitation_learning"
+				weights.Metadata.EvalScore = refinedEvalScore
+				weights.Metadata.Episodes = 0 // Pre-training doesn't count as episodes
+
+				saved, err := defaultStorage.SaveDefaultModelIfBetter(weights)
+				if err != nil {
+					fmt.Printf("Warning: Failed to save refined default model: %v\n", err)
+				} else if saved {
+					fmt.Printf("✅ Saved refined default model (Eval Score: %.2f)\n", refinedEvalScore)
+				} else {
+					fmt.Printf("ℹ️  Existing default model is better or equal, keeping original\n")
+				}
+			}
 		}
 	}
+
+	// Epsilon is already set to 0.2 from loading the default model above
+	// No need to adjust further since we always start from a loaded default model
 
 	// For self-play, create a copy of the agent for the enemy
 	var enemyAgent *model.DQNAgent
@@ -748,6 +822,8 @@ func getActionName(action int) string {
 }
 
 // convertActionToDecision converts a discrete action to a game decision
+// Action definitions are standardized in shared/config/game-config.json
+// This function implements the mapping defined by rl.action.actions
 func convertActionToDecision(action int, currentAngle float64, config *types.GameConfig) *types.AIDecision {
 	decision := &types.AIDecision{
 		AngleDelta:    0,

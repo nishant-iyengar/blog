@@ -1,227 +1,215 @@
 /**
- * Action Space Definition
+ * Action Conversion Utilities
  * 
- * Defines the action space for the RL agent and converts between
- * RL actions and game decisions.
+ * Converts between keyboard input and discrete action numbers (0-13)
+ * Matching the Go backend's action space
+ * 
+ * Action definitions are standardized in shared/config/game-config.json
  */
 
 import type { AIDecision } from './types';
 import { ROTATION_SPEED } from '@/app/games/tank-trouble/config';
-import { assertType } from '@/lib/type-guards';
+import { NUM_DISCRETE_ACTIONS, type DiscreteAction, type ActionDefinition, ACTION_DEFINITIONS } from './rl-action-config';
+
+export { NUM_DISCRETE_ACTIONS, type DiscreteAction, type ActionDefinition };
+
+export type ContinuousAction = AIDecision;
 
 /**
- * Discrete action space
+ * Convert keyboard input to discrete action number
  * 
- * Each action is a number representing a combination of movements.
- * This is easier to train than continuous actions.
- */
-export enum DiscreteAction {
-  NO_ACTION = 0,
-  ROTATE_LEFT = 1,
-  ROTATE_RIGHT = 2,
-  MOVE_FORWARD = 3,
-  MOVE_BACKWARD = 4,
-  SHOOT = 5,
-  ROTATE_LEFT_FORWARD = 6,
-  ROTATE_RIGHT_FORWARD = 7,
-  ROTATE_LEFT_SHOOT = 8,
-  ROTATE_RIGHT_SHOOT = 9,
-  MOVE_FORWARD_SHOOT = 10,
-  MOVE_BACKWARD_SHOOT = 11,
-  ROTATE_LEFT_BACKWARD = 12,
-  ROTATE_RIGHT_BACKWARD = 13,
-}
-
-export const NUM_DISCRETE_ACTIONS = 14;
-
-/**
- * Continuous action space
+ * Action definitions come from shared/config/game-config.json to ensure
+ * consistency with Go backend. See ACTION_DEFINITIONS for the full list.
  * 
- * For more flexible control, use continuous actions.
+ * @param keys - Set of currently pressed keys (from useGameInput)
+ * @param controls - Player control mappings (defaults to Player 1: Arrow keys + Space)
+ * @returns Action number (0-13) matching ACTION_DEFINITIONS
  */
-export interface ContinuousAction {
-  angleDelta: number;      // -1 to 1 (normalized rotation)
-  moveDirection: number;   // -1 to 1 (backward to forward)
-  shouldShoot: number;     // 0 to 1 (probability to shoot)
-}
+export function keysToAction(
+  keys: Set<string>,
+  controls: {
+    rotateLeft: string;
+    rotateRight: string;
+    moveForward: string;
+    moveBackward: string;
+    shoot: string;
+  } = {
+    rotateLeft: 'arrowleft',
+    rotateRight: 'arrowright',
+    moveForward: 'arrowup',
+    moveBackward: 'arrowdown',
+    shoot: ' ',
+  }
+): number {
+  const rotateLeft = keys.has(controls.rotateLeft);
+  const rotateRight = keys.has(controls.rotateRight);
+  const moveForward = keys.has(controls.moveForward);
+  const moveBackward = keys.has(controls.moveBackward);
+  const shoot = keys.has(controls.shoot);
 
-/**
- * Convert discrete action to game decision
- */
-export function actionToDecision(
-  action: number | ContinuousAction,
-  currentAngle: number
-): AIDecision {
-  // Handle continuous actions
-  if (typeof action !== 'number') {
-    return {
-      angleDelta: action.angleDelta * ROTATION_SPEED,
-      moveDirection: Math.round(action.moveDirection), // Clamp to -1, 0, 1
-      shouldShoot: action.shouldShoot > 0.5,
-    };
+  // Check for shooting actions first (they take priority)
+  if (shoot) {
+    if (moveForward) {
+      return 10; // MOVE_FORWARD_SHOOT
+    } else if (moveBackward) {
+      return 11; // MOVE_BACKWARD_SHOOT
+    } else if (rotateLeft) {
+      return 8; // ROTATE_LEFT_SHOOT
+    } else if (rotateRight) {
+      return 9; // ROTATE_RIGHT_SHOOT
+    }
+    return 5; // SHOOT
   }
 
-  // Handle discrete actions
-  // Type guard: ensure action is a valid DiscreteAction enum value
-  const discreteAction = assertType(
-    action,
-    (val): val is DiscreteAction =>
-      typeof val === 'number' && val >= 0 && val < NUM_DISCRETE_ACTIONS,
-    `Invalid discrete action: ${action}`
-  );
-  
-  let angleDelta = 0;
-  let moveDirection = 0;
-  let shouldShoot = false;
+  // Movement actions
+  if (moveForward) {
+    if (rotateLeft) {
+      return 6; // ROTATE_LEFT_FORWARD
+    } else if (rotateRight) {
+      return 7; // ROTATE_RIGHT_FORWARD
+    }
+    return 3; // MOVE_FORWARD
+  } else if (moveBackward) {
+    if (rotateLeft) {
+      return 12; // ROTATE_LEFT_BACKWARD
+    } else if (rotateRight) {
+      return 13; // ROTATE_RIGHT_BACKWARD
+    }
+    return 4; // MOVE_BACKWARD
+  }
 
-  switch (discreteAction) {
-    case DiscreteAction.NO_ACTION:
+  // Rotation-only actions
+  if (rotateLeft) {
+    return 1; // ROTATE_LEFT
+  } else if (rotateRight) {
+    return 2; // ROTATE_RIGHT
+  }
+
+  return 0; // NO_ACTION
+}
+
+/**
+ * Convert discrete action number to AIDecision
+ * This is the reverse of keysToAction - converts action (0-13) to game decision
+ * 
+ * @param action - Discrete action number (0-13)
+ * @param currentAngle - Current tank angle in degrees (not used, but matches Go signature)
+ * @returns AIDecision object with angleDelta, moveDirection, and shouldShoot
+ */
+export function actionToDecision(action: number, currentAngle: number): AIDecision {
+  const decision: AIDecision = {
+    angleDelta: 0,
+    moveDirection: 0,
+    shouldShoot: false,
+  };
+
+  switch (action) {
+    case 0: // NO_ACTION
       // Do nothing
       break;
-
-    case DiscreteAction.ROTATE_LEFT:
-      angleDelta = -ROTATION_SPEED;
+    case 1: // ROTATE_LEFT
+      decision.angleDelta = -ROTATION_SPEED;
       break;
-
-    case DiscreteAction.ROTATE_RIGHT:
-      angleDelta = ROTATION_SPEED;
+    case 2: // ROTATE_RIGHT
+      decision.angleDelta = ROTATION_SPEED;
       break;
-
-    case DiscreteAction.MOVE_FORWARD:
-      moveDirection = 1;
+    case 3: // MOVE_FORWARD
+      decision.moveDirection = 1;
       break;
-
-    case DiscreteAction.MOVE_BACKWARD:
-      moveDirection = -1;
+    case 4: // MOVE_BACKWARD
+      decision.moveDirection = -1;
       break;
-
-    case DiscreteAction.SHOOT:
-      shouldShoot = true;
+    case 5: // SHOOT
+      decision.shouldShoot = true;
       break;
-
-    case DiscreteAction.ROTATE_LEFT_FORWARD:
-      angleDelta = -ROTATION_SPEED;
-      moveDirection = 1;
+    case 6: // ROTATE_LEFT_FORWARD
+      decision.angleDelta = -ROTATION_SPEED;
+      decision.moveDirection = 1;
       break;
-
-    case DiscreteAction.ROTATE_RIGHT_FORWARD:
-      angleDelta = ROTATION_SPEED;
-      moveDirection = 1;
+    case 7: // ROTATE_RIGHT_FORWARD
+      decision.angleDelta = ROTATION_SPEED;
+      decision.moveDirection = 1;
       break;
-
-    case DiscreteAction.ROTATE_LEFT_SHOOT:
-      angleDelta = -ROTATION_SPEED;
-      shouldShoot = true;
+    case 8: // ROTATE_LEFT_SHOOT
+      decision.angleDelta = -ROTATION_SPEED;
+      decision.shouldShoot = true;
       break;
-
-    case DiscreteAction.ROTATE_RIGHT_SHOOT:
-      angleDelta = ROTATION_SPEED;
-      shouldShoot = true;
+    case 9: // ROTATE_RIGHT_SHOOT
+      decision.angleDelta = ROTATION_SPEED;
+      decision.shouldShoot = true;
       break;
-
-    case DiscreteAction.MOVE_FORWARD_SHOOT:
-      moveDirection = 1;
-      shouldShoot = true;
+    case 10: // MOVE_FORWARD_SHOOT
+      decision.moveDirection = 1;
+      decision.shouldShoot = true;
       break;
-
-    case DiscreteAction.MOVE_BACKWARD_SHOOT:
-      moveDirection = -1;
-      shouldShoot = true;
+    case 11: // MOVE_BACKWARD_SHOOT
+      decision.moveDirection = -1;
+      decision.shouldShoot = true;
       break;
-
-    case DiscreteAction.ROTATE_LEFT_BACKWARD:
-      angleDelta = -ROTATION_SPEED;
-      moveDirection = -1;
+    case 12: // ROTATE_LEFT_BACKWARD
+      decision.angleDelta = -ROTATION_SPEED;
+      decision.moveDirection = -1;
       break;
-
-    case DiscreteAction.ROTATE_RIGHT_BACKWARD:
-      angleDelta = ROTATION_SPEED;
-      moveDirection = -1;
+    case 13: // ROTATE_RIGHT_BACKWARD
+      decision.angleDelta = ROTATION_SPEED;
+      decision.moveDirection = -1;
       break;
-
     default:
-      // Removed warning log
+      // Unknown action, do nothing
+      break;
   }
 
-  return {
-    angleDelta,
-    moveDirection,
-    shouldShoot,
-  };
+  return decision;
 }
 
 /**
- * Convert decision to action (for logging/debugging)
+ * Convert AIDecision to discrete action number
+ * This is the reverse of actionToDecision
+ * 
+ * @param decision - AIDecision object
+ * @returns Discrete action number (0-13)
  */
-export type DecisionToAction = {
-  type: 'discrete' | 'continuous';
-  value: number | ContinuousAction;
-};
-
-export function decisionToAction(decision: AIDecision): DecisionToAction {
-  // Convert decision back to action representation
-  // This is approximate since multiple actions can map to same decision
-  
-  const hasRotation = Math.abs(decision.angleDelta) > 0.1;
-  const hasMovement = decision.moveDirection !== 0;
-  const hasShoot = decision.shouldShoot;
-
-  if (!hasRotation && !hasMovement && !hasShoot) {
-    return { type: 'discrete', value: DiscreteAction.NO_ACTION };
-  }
-
-  // Try to match to discrete action
-  if (hasRotation && hasMovement && hasShoot) {
-    // Complex combination - use continuous
-    return {
-      type: 'continuous',
-      value: {
-        angleDelta: decision.angleDelta / ROTATION_SPEED,
-        moveDirection: decision.moveDirection,
-        shouldShoot: hasShoot ? 1 : 0,
-      },
-    };
-  }
-
-  // Simple combinations
-  if (hasRotation && decision.angleDelta < 0) {
-    if (hasMovement && decision.moveDirection > 0) {
-      return { type: 'discrete', value: DiscreteAction.ROTATE_LEFT_FORWARD };
+export function decisionToAction(decision: AIDecision): number {
+  // Check for shooting actions first (they take priority)
+  if (decision.shouldShoot) {
+    if (decision.moveDirection > 0) {
+      return 10; // MOVE_FORWARD_SHOOT
+    } else if (decision.moveDirection < 0) {
+      return 11; // MOVE_BACKWARD_SHOOT
+    } else if (decision.angleDelta < 0) {
+      return 8; // ROTATE_LEFT_SHOOT
+    } else if (decision.angleDelta > 0) {
+      return 9; // ROTATE_RIGHT_SHOOT
     }
-    if (hasShoot) {
-      return { type: 'discrete', value: DiscreteAction.ROTATE_LEFT_SHOOT };
-    }
-    return { type: 'discrete', value: DiscreteAction.ROTATE_LEFT };
+    return 5; // SHOOT
   }
 
-  if (hasRotation && decision.angleDelta > 0) {
-    if (hasMovement && decision.moveDirection > 0) {
-      return { type: 'discrete', value: DiscreteAction.ROTATE_RIGHT_FORWARD };
+  // Movement actions
+  if (decision.moveDirection > 0) {
+    if (decision.angleDelta < 0) {
+      return 6; // ROTATE_LEFT_FORWARD
+    } else if (decision.angleDelta > 0) {
+      return 7; // ROTATE_RIGHT_FORWARD
     }
-    if (hasShoot) {
-      return { type: 'discrete', value: DiscreteAction.ROTATE_RIGHT_SHOOT };
+    return 3; // MOVE_FORWARD
+  } else if (decision.moveDirection < 0) {
+    if (decision.angleDelta < 0) {
+      return 12; // ROTATE_LEFT_BACKWARD
+    } else if (decision.angleDelta > 0) {
+      return 13; // ROTATE_RIGHT_BACKWARD
     }
-    return { type: 'discrete', value: DiscreteAction.ROTATE_RIGHT };
+    return 4; // MOVE_BACKWARD
   }
 
-  if (hasMovement && decision.moveDirection > 0) {
-    if (hasShoot) {
-      return { type: 'discrete', value: DiscreteAction.MOVE_FORWARD_SHOOT };
-    }
-    return { type: 'discrete', value: DiscreteAction.MOVE_FORWARD };
+  // Rotation-only actions
+  if (decision.angleDelta < 0) {
+    return 1; // ROTATE_LEFT
+  } else if (decision.angleDelta > 0) {
+    return 2; // ROTATE_RIGHT
   }
 
-  if (hasMovement && decision.moveDirection < 0) {
-    if (hasShoot) {
-      return { type: 'discrete', value: DiscreteAction.MOVE_BACKWARD_SHOOT };
-    }
-    return { type: 'discrete', value: DiscreteAction.MOVE_BACKWARD };
-  }
-
-  if (hasShoot) {
-    return { type: 'discrete', value: DiscreteAction.SHOOT };
-  }
-
-  return { type: 'discrete', value: DiscreteAction.NO_ACTION };
+  return 0; // NO_ACTION
 }
 
+// Type alias for DecisionToAction (used in rl-environment.ts)
+export type DecisionToAction = typeof decisionToAction;

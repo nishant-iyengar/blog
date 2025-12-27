@@ -152,12 +152,38 @@ func CalculateReward(
 		breakdown.LifeAdvantage = &lifeAdvantageReward
 	}
 
-	// 8. Movement reward
+	// 8. Movement reward - favor forward movement over backward
 	movementDistance := getDistance(previous.AITank, current.AITank)
 	moved := movementDistance > 0.1
 
 	if moved {
-		movementReward := math.Min(config.Reward.MovementRewardMax, movementDistance*config.Reward.MovementRewardMultiplier)
+		// Check if moving backward without good reason (e.g., dodging bullets)
+		isMovingBackward := action.MoveDirection < 0
+		
+		// Calculate base movement reward
+		baseMovementReward := math.Min(config.Reward.MovementRewardMax, movementDistance*config.Reward.MovementRewardMultiplier)
+		
+		// Check if there's a good reason to move backward (e.g., bullet nearby)
+		hasNearbyThreat := false
+		for _, bullet := range current.Bullets {
+			if bullet.Owner != current.AITank.Color && !bullet.Exploding {
+				dist := getDistanceToTank(bullet, current.AITank, 24.0)
+				if dist < config.Reward.ThreatDistance {
+					hasNearbyThreat = true
+					break
+				}
+			}
+		}
+		
+		// Penalize backward movement unless there's a threat
+		var movementReward float64
+		if isMovingBackward && !hasNearbyThreat {
+			// Reduce reward for backward movement when not needed
+			movementReward = baseMovementReward * 0.3 // Only 30% of normal reward
+		} else {
+			movementReward = baseMovementReward
+		}
+		
 		totalReward += movementReward
 		breakdown.Movement = &movementReward
 	} else {

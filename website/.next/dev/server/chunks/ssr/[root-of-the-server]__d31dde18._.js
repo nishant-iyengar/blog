@@ -2222,210 +2222,170 @@ function findSafeDodgePosition(tank, dodgeAngle, dodgeDistance, barriers, suns, 
 "use strict";
 
 /**
- * Action Space Definition
+ * Action Conversion Utilities
  * 
- * Defines the action space for the RL agent and converts between
- * RL actions and game decisions.
+ * Converts between keyboard input and discrete action numbers (0-13)
+ * Matching the Go backend's action space
  */ __turbopack_context__.s([
-    "DiscreteAction",
-    ()=>DiscreteAction,
     "NUM_DISCRETE_ACTIONS",
     ()=>NUM_DISCRETE_ACTIONS,
     "actionToDecision",
     ()=>actionToDecision,
     "decisionToAction",
-    ()=>decisionToAction
+    ()=>decisionToAction,
+    "keysToAction",
+    ()=>keysToAction
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/config.ts [app-ssr] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$lib$2f$type$2d$guards$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/lib/type-guards.ts [app-ssr] (ecmascript)");
 ;
-;
-var DiscreteAction = /*#__PURE__*/ function(DiscreteAction) {
-    DiscreteAction[DiscreteAction["NO_ACTION"] = 0] = "NO_ACTION";
-    DiscreteAction[DiscreteAction["ROTATE_LEFT"] = 1] = "ROTATE_LEFT";
-    DiscreteAction[DiscreteAction["ROTATE_RIGHT"] = 2] = "ROTATE_RIGHT";
-    DiscreteAction[DiscreteAction["MOVE_FORWARD"] = 3] = "MOVE_FORWARD";
-    DiscreteAction[DiscreteAction["MOVE_BACKWARD"] = 4] = "MOVE_BACKWARD";
-    DiscreteAction[DiscreteAction["SHOOT"] = 5] = "SHOOT";
-    DiscreteAction[DiscreteAction["ROTATE_LEFT_FORWARD"] = 6] = "ROTATE_LEFT_FORWARD";
-    DiscreteAction[DiscreteAction["ROTATE_RIGHT_FORWARD"] = 7] = "ROTATE_RIGHT_FORWARD";
-    DiscreteAction[DiscreteAction["ROTATE_LEFT_SHOOT"] = 8] = "ROTATE_LEFT_SHOOT";
-    DiscreteAction[DiscreteAction["ROTATE_RIGHT_SHOOT"] = 9] = "ROTATE_RIGHT_SHOOT";
-    DiscreteAction[DiscreteAction["MOVE_FORWARD_SHOOT"] = 10] = "MOVE_FORWARD_SHOOT";
-    DiscreteAction[DiscreteAction["MOVE_BACKWARD_SHOOT"] = 11] = "MOVE_BACKWARD_SHOOT";
-    DiscreteAction[DiscreteAction["ROTATE_LEFT_BACKWARD"] = 12] = "ROTATE_LEFT_BACKWARD";
-    DiscreteAction[DiscreteAction["ROTATE_RIGHT_BACKWARD"] = 13] = "ROTATE_RIGHT_BACKWARD";
-    return DiscreteAction;
-}({});
 const NUM_DISCRETE_ACTIONS = 14;
-function actionToDecision(action, currentAngle) {
-    // Handle continuous actions
-    if (typeof action !== 'number') {
-        return {
-            angleDelta: action.angleDelta * __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"],
-            moveDirection: Math.round(action.moveDirection),
-            shouldShoot: action.shouldShoot > 0.5
-        };
+function keysToAction(keys, controls = {
+    rotateLeft: 'arrowleft',
+    rotateRight: 'arrowright',
+    moveForward: 'arrowup',
+    moveBackward: 'arrowdown',
+    shoot: ' '
+}) {
+    const rotateLeft = keys.has(controls.rotateLeft);
+    const rotateRight = keys.has(controls.rotateRight);
+    const moveForward = keys.has(controls.moveForward);
+    const moveBackward = keys.has(controls.moveBackward);
+    const shoot = keys.has(controls.shoot);
+    // Check for shooting actions first (they take priority)
+    if (shoot) {
+        if (moveForward) {
+            return 10; // MOVE_FORWARD_SHOOT
+        } else if (moveBackward) {
+            return 11; // MOVE_BACKWARD_SHOOT
+        } else if (rotateLeft) {
+            return 8; // ROTATE_LEFT_SHOOT
+        } else if (rotateRight) {
+            return 9; // ROTATE_RIGHT_SHOOT
+        }
+        return 5; // SHOOT
     }
-    // Handle discrete actions
-    // Type guard: ensure action is a valid DiscreteAction enum value
-    const discreteAction = (0, __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$lib$2f$type$2d$guards$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["assertType"])(action, (val)=>typeof val === 'number' && val >= 0 && val < NUM_DISCRETE_ACTIONS, `Invalid discrete action: ${action}`);
-    let angleDelta = 0;
-    let moveDirection = 0;
-    let shouldShoot = false;
-    switch(discreteAction){
+    // Movement actions
+    if (moveForward) {
+        if (rotateLeft) {
+            return 6; // ROTATE_LEFT_FORWARD
+        } else if (rotateRight) {
+            return 7; // ROTATE_RIGHT_FORWARD
+        }
+        return 3; // MOVE_FORWARD
+    } else if (moveBackward) {
+        if (rotateLeft) {
+            return 12; // ROTATE_LEFT_BACKWARD
+        } else if (rotateRight) {
+            return 13; // ROTATE_RIGHT_BACKWARD
+        }
+        return 4; // MOVE_BACKWARD
+    }
+    // Rotation-only actions
+    if (rotateLeft) {
+        return 1; // ROTATE_LEFT
+    } else if (rotateRight) {
+        return 2; // ROTATE_RIGHT
+    }
+    return 0; // NO_ACTION
+}
+function actionToDecision(action, currentAngle) {
+    const decision = {
+        angleDelta: 0,
+        moveDirection: 0,
+        shouldShoot: false
+    };
+    switch(action){
         case 0:
             break;
         case 1:
-            angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
             break;
         case 2:
-            angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
             break;
         case 3:
-            moveDirection = 1;
+            decision.moveDirection = 1;
             break;
         case 4:
-            moveDirection = -1;
+            decision.moveDirection = -1;
             break;
         case 5:
-            shouldShoot = true;
+            decision.shouldShoot = true;
             break;
         case 6:
-            angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
-            moveDirection = 1;
+            decision.angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.moveDirection = 1;
             break;
         case 7:
-            angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
-            moveDirection = 1;
+            decision.angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.moveDirection = 1;
             break;
         case 8:
-            angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
-            shouldShoot = true;
+            decision.angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.shouldShoot = true;
             break;
         case 9:
-            angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
-            shouldShoot = true;
+            decision.angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.shouldShoot = true;
             break;
         case 10:
-            moveDirection = 1;
-            shouldShoot = true;
+            decision.moveDirection = 1;
+            decision.shouldShoot = true;
             break;
         case 11:
-            moveDirection = -1;
-            shouldShoot = true;
+            decision.moveDirection = -1;
+            decision.shouldShoot = true;
             break;
         case 12:
-            angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
-            moveDirection = -1;
+            decision.angleDelta = -__TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.moveDirection = -1;
             break;
         case 13:
-            angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
-            moveDirection = -1;
+            decision.angleDelta = __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"];
+            decision.moveDirection = -1;
             break;
         default:
+            break;
     }
-    return {
-        angleDelta,
-        moveDirection,
-        shouldShoot
-    };
+    return decision;
 }
 function decisionToAction(decision) {
-    // Convert decision back to action representation
-    // This is approximate since multiple actions can map to same decision
-    const hasRotation = Math.abs(decision.angleDelta) > 0.1;
-    const hasMovement = decision.moveDirection !== 0;
-    const hasShoot = decision.shouldShoot;
-    if (!hasRotation && !hasMovement && !hasShoot) {
-        return {
-            type: 'discrete',
-            value: 0
-        };
-    }
-    // Try to match to discrete action
-    if (hasRotation && hasMovement && hasShoot) {
-        // Complex combination - use continuous
-        return {
-            type: 'continuous',
-            value: {
-                angleDelta: decision.angleDelta / __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROTATION_SPEED"],
-                moveDirection: decision.moveDirection,
-                shouldShoot: hasShoot ? 1 : 0
-            }
-        };
-    }
-    // Simple combinations
-    if (hasRotation && decision.angleDelta < 0) {
-        if (hasMovement && decision.moveDirection > 0) {
-            return {
-                type: 'discrete',
-                value: 6
-            };
+    // Check for shooting actions first (they take priority)
+    if (decision.shouldShoot) {
+        if (decision.moveDirection > 0) {
+            return 10; // MOVE_FORWARD_SHOOT
+        } else if (decision.moveDirection < 0) {
+            return 11; // MOVE_BACKWARD_SHOOT
+        } else if (decision.angleDelta < 0) {
+            return 8; // ROTATE_LEFT_SHOOT
+        } else if (decision.angleDelta > 0) {
+            return 9; // ROTATE_RIGHT_SHOOT
         }
-        if (hasShoot) {
-            return {
-                type: 'discrete',
-                value: 8
-            };
-        }
-        return {
-            type: 'discrete',
-            value: 1
-        };
+        return 5; // SHOOT
     }
-    if (hasRotation && decision.angleDelta > 0) {
-        if (hasMovement && decision.moveDirection > 0) {
-            return {
-                type: 'discrete',
-                value: 7
-            };
+    // Movement actions
+    if (decision.moveDirection > 0) {
+        if (decision.angleDelta < 0) {
+            return 6; // ROTATE_LEFT_FORWARD
+        } else if (decision.angleDelta > 0) {
+            return 7; // ROTATE_RIGHT_FORWARD
         }
-        if (hasShoot) {
-            return {
-                type: 'discrete',
-                value: 9
-            };
+        return 3; // MOVE_FORWARD
+    } else if (decision.moveDirection < 0) {
+        if (decision.angleDelta < 0) {
+            return 12; // ROTATE_LEFT_BACKWARD
+        } else if (decision.angleDelta > 0) {
+            return 13; // ROTATE_RIGHT_BACKWARD
         }
-        return {
-            type: 'discrete',
-            value: 2
-        };
+        return 4; // MOVE_BACKWARD
     }
-    if (hasMovement && decision.moveDirection > 0) {
-        if (hasShoot) {
-            return {
-                type: 'discrete',
-                value: 10
-            };
-        }
-        return {
-            type: 'discrete',
-            value: 3
-        };
+    // Rotation-only actions
+    if (decision.angleDelta < 0) {
+        return 1; // ROTATE_LEFT
+    } else if (decision.angleDelta > 0) {
+        return 2; // ROTATE_RIGHT
     }
-    if (hasMovement && decision.moveDirection < 0) {
-        if (hasShoot) {
-            return {
-                type: 'discrete',
-                value: 11
-            };
-        }
-        return {
-            type: 'discrete',
-            value: 4
-        };
-    }
-    if (hasShoot) {
-        return {
-            type: 'discrete',
-            value: 5
-        };
-    }
-    return {
-        type: 'discrete',
-        value: 0
-    };
+    return 0; // NO_ACTION
 }
 }),
 "[project]/website/app/games/tank-trouble/ai-tank/rl-observation.ts [app-ssr] (ecmascript)", ((__turbopack_context__) => {
@@ -8159,6 +8119,8 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$t
 var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/ai-tank/config.ts [app-ssr] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$rl$2d$model$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/ai-tank/rl-model.ts [app-ssr] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$rl$2d$dqn$2d$model$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/ai-tank/rl-dqn-model.ts [app-ssr] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$rl$2d$observation$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/ai-tank/rl-observation.ts [app-ssr] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$rl$2d$actions$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/ai-tank/rl-actions.ts [app-ssr] (ecmascript)");
 // import { listSavedModels, type SavedModel } from '@/app/games/tank-trouble/ai-tank/rl-model-storage'; // Commented out - using Supabase instead
 var __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/website/app/games/tank-trouble/config.ts [app-ssr] (ecmascript)");
 'use client';
@@ -8194,6 +8156,8 @@ const mapData = validateMapData(__TURBOPACK__imported__module__$5b$project$5d2f$
 ;
 ;
 ;
+;
+;
 function PlayYourAI({ onBack }) {
     const typedMapData = mapData;
     const barriers = typedMapData.barriers || [];
@@ -8216,6 +8180,12 @@ function PlayYourAI({ onBack }) {
     });
     const [gameOverWinner, setGameOverWinner] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
     const [isPaused, setIsPaused] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
+    // Demonstration collection state
+    const [demonstrationSteps, setDemonstrationSteps] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])([]);
+    const [previousObservation, setPreviousObservation] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [previousAction, setPreviousAction] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null); // Capture action that was actually taken
+    const [isSavingDemonstrations, setIsSavingDemonstrations] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [demonstrationSaveStatus, setDemonstrationSaveStatus] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
     const tankImages = (0, __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$hooks$2f$useTankImages$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useTankImages"])();
     const gameInput = (0, __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$hooks$2f$useGameInput$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useGameInput"])({
         gameOver: gameOverWinner !== null
@@ -8362,8 +8332,55 @@ function PlayYourAI({ onBack }) {
     }, [
         loadLatestModelFromSupabase
     ]);
+    // Save demonstrations to backend
+    const saveDemonstrations = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])(async ()=>{
+        if (demonstrationSteps.length === 0) {
+            return;
+        }
+        setIsSavingDemonstrations(true);
+        setDemonstrationSaveStatus(null);
+        try {
+            const response = await fetch('http://localhost:8080/api/demonstrations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    steps: demonstrationSteps,
+                    isDefault: true,
+                    metadata: {
+                        episodeLength: demonstrationSteps.length,
+                        totalReward: 0,
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to save: ${response.status} ${errorText}`);
+            }
+            const result = await response.json();
+            setDemonstrationSaveStatus(`✅ Saved ${result.steps} demonstration steps`);
+            // Clear demonstrations after successful save
+            setDemonstrationSteps([]);
+            setPreviousObservation(null);
+            setPreviousAction(null);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setDemonstrationSaveStatus(`❌ Failed to save: ${errorMessage}`);
+            console.error('Failed to save demonstrations:', error);
+        } finally{
+            setIsSavingDemonstrations(false);
+        }
+    }, [
+        demonstrationSteps
+    ]);
     // Reset game
     const resetGame = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])(()=>{
+        // Save demonstrations before resetting if game ended
+        if (gameOverWinner !== null && demonstrationSteps.length > 0) {
+            saveDemonstrations();
+        }
         const initialTanks = (0, __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$utils$2f$spawn$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["getInitialSpawnPositions"])(typedMapData, barriers, suns);
         setTanks(initialTanks);
         setBullets([]);
@@ -8373,10 +8390,17 @@ function PlayYourAI({ onBack }) {
         });
         setGameOverWinner(null);
         setIsPaused(false);
+        // Reset demonstration state
+        setPreviousObservation(null);
+        setPreviousAction(null);
+    // Don't reset demonstrationSteps here - let saveDemonstrations clear them
     }, [
         typedMapData,
         barriers,
-        suns
+        suns,
+        gameOverWinner,
+        demonstrationSteps,
+        saveDemonstrations
     ]);
     // Game logic instance
     const gameLogicInstance = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useMemo"])(()=>({
@@ -8427,6 +8451,88 @@ function PlayYourAI({ onBack }) {
             setGameOverWinner(winner);
         }
     });
+    // Collect demonstration steps during gameplay
+    // IMPORTANT: We need to capture the action that was actually taken, not current keyboard state
+    // Flow: BEFORE tick -> capture state + action, AFTER tick -> capture nextState
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
+        if (isPaused || !isModelLoaded || gameOverWinner !== null || tanks.length < 2) {
+            return;
+        }
+        // Extract observation from blue tank's perspective (human player)
+        const blueTank = tanks[0];
+        const redTank = tanks[1];
+        if (!blueTank || !redTank) {
+            return;
+        }
+        // Create AIContext from blue tank's perspective
+        const context = {
+            aiTank: blueTank,
+            enemyTank: redTank,
+            bullets: bullets,
+            barriers: barriers,
+            suns: suns,
+            mapWidth: typedMapData.width,
+            mapHeight: typedMapData.height,
+            tickTime: Date.now(),
+            config: __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$config$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["DEFAULT_AI_CONFIG"]
+        };
+        const currentObservation = (0, __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$rl$2d$observation$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["extractObservation"])(context);
+        // If we have a previous observation AND previous action, we can create a step
+        // This means an action was taken that transitioned from previousObservation to currentObservation
+        if (previousObservation && previousAction !== null) {
+            // Check if game ended (this tick)
+            const done = blueTank.lives <= 0 || redTank.lives <= 0;
+            // Create step with reward (0.1 for imitation learning - encourages following expert)
+            // Note: We store observations (normalized feature vectors) which contain all game state information
+            // State = observation before action was applied
+            // Action = action that was actually applied (captured before previous tick)
+            // NextState = observation after action was applied
+            const step = {
+                state: previousObservation.vector,
+                action: previousAction,
+                reward: 0.1,
+                nextState: currentObservation.vector,
+                done: done
+            };
+            setDemonstrationSteps((prev)=>[
+                    ...prev,
+                    step
+                ]);
+        }
+        // Capture the action that corresponds to current keyboard state
+        // This action will be applied in the next game tick
+        // Note: Since ticks are frequent (72 FPS = ~14ms) and keys don't change rapidly,
+        // the action we capture here is very close to what was applied during the previous tick
+        const nextAction = (0, __TURBOPACK__imported__module__$5b$project$5d2f$website$2f$app$2f$games$2f$tank$2d$trouble$2f$ai$2d$tank$2f$rl$2d$actions$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["keysToAction"])(gameInput.keysRef.current);
+        // Update for next iteration
+        // previousObservation becomes the "state" for the next step
+        // previousAction becomes the "action" that was applied (or will be applied)
+        setPreviousObservation(currentObservation);
+        setPreviousAction(nextAction);
+    }, [
+        tanks,
+        bullets,
+        barriers,
+        suns,
+        gameInput.keysRef,
+        isPaused,
+        isModelLoaded,
+        gameOverWinner,
+        previousObservation,
+        previousAction,
+        typedMapData
+    ]);
+    // Save demonstrations when game ends
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
+        if (gameOverWinner !== null && demonstrationSteps.length > 0 && !isSavingDemonstrations) {
+            saveDemonstrations();
+        }
+    }, [
+        gameOverWinner,
+        demonstrationSteps.length,
+        isSavingDemonstrations,
+        saveDemonstrations
+    ]);
     // Game loop
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
         if (isPaused || !isModelLoaded || gameOverWinner !== null) {
@@ -8473,7 +8579,7 @@ function PlayYourAI({ onBack }) {
                         children: "Play Your AI"
                     }, void 0, false, {
                         fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                        lineNumber: 335,
+                        lineNumber: 479,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -8482,92 +8588,153 @@ function PlayYourAI({ onBack }) {
                         children: "Back to Training"
                     }, void 0, false, {
                         fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                        lineNumber: 336,
+                        lineNumber: 480,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                lineNumber: 334,
+                lineNumber: 478,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "w-full max-w-4xl p-4 bg-white border border-gray-300 rounded shadow",
-                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                    className: "flex items-center gap-4",
-                    children: [
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
-                            className: "text-sm font-semibold",
-                            children: "AI Model:"
-                        }, void 0, false, {
-                            fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 347,
-                            columnNumber: 11
-                        }, this),
-                        isLoadingModel ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                            className: "text-sm text-gray-600",
-                            children: "Loading latest model from Supabase..."
-                        }, void 0, false, {
-                            fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 349,
-                            columnNumber: 13
-                        }, this) : isModelLoaded ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                            className: "text-sm text-green-600",
-                            children: "✓ Latest model loaded from Supabase"
-                        }, void 0, false, {
-                            fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 351,
-                            columnNumber: 13
-                        }, this) : modelError ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                            className: "flex flex-col gap-1",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex items-center gap-4",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                className: "text-sm font-semibold",
+                                children: "AI Model:"
+                            }, void 0, false, {
+                                fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                lineNumber: 491,
+                                columnNumber: 11
+                            }, this),
+                            isLoadingModel ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                className: "text-sm text-gray-600",
+                                children: "Loading latest model from Supabase..."
+                            }, void 0, false, {
+                                fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                lineNumber: 493,
+                                columnNumber: 13
+                            }, this) : isModelLoaded ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                className: "text-sm text-green-600",
+                                children: "✓ Latest model loaded from Supabase"
+                            }, void 0, false, {
+                                fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                lineNumber: 495,
+                                columnNumber: 13
+                            }, this) : modelError ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-col gap-1",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "text-sm text-red-600",
+                                        children: "✗ Failed to load model"
+                                    }, void 0, false, {
+                                        fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                        lineNumber: 498,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "text-xs text-gray-500",
+                                        children: modelError
+                                    }, void 0, false, {
+                                        fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                        lineNumber: 499,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                        onClick: loadLatestModelFromSupabase,
+                                        className: "mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600",
+                                        children: "Retry"
+                                    }, void 0, false, {
+                                        fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                        lineNumber: 500,
+                                        columnNumber: 15
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                lineNumber: 497,
+                                columnNumber: 13
+                            }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                className: "text-sm text-gray-600",
+                                children: "Ready to load"
+                            }, void 0, false, {
+                                fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                lineNumber: 508,
+                                columnNumber: 13
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                        lineNumber: 490,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "mt-3 pt-3 border-t border-gray-200",
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "flex items-center gap-4",
                             children: [
-                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                    className: "text-sm text-red-600",
-                                    children: "✗ Failed to load model"
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                    className: "text-sm font-semibold",
+                                    children: "Demonstration Collection:"
                                 }, void 0, false, {
                                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                    lineNumber: 354,
+                                    lineNumber: 515,
+                                    columnNumber: 13
+                                }, this),
+                                demonstrationSteps.length > 0 ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "text-sm text-blue-600",
+                                    children: [
+                                        "📝 ",
+                                        demonstrationSteps.length,
+                                        " steps collected"
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                    lineNumber: 517,
+                                    columnNumber: 15
+                                }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "text-sm text-gray-500",
+                                    children: "Not collecting"
+                                }, void 0, false, {
+                                    fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                                    lineNumber: 521,
                                     columnNumber: 15
                                 }, this),
-                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                    className: "text-xs text-gray-500",
-                                    children: modelError
+                                isSavingDemonstrations && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "text-sm text-gray-600",
+                                    children: "Saving..."
                                 }, void 0, false, {
                                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                    lineNumber: 355,
+                                    lineNumber: 524,
                                     columnNumber: 15
                                 }, this),
-                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                    onClick: loadLatestModelFromSupabase,
-                                    className: "mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600",
-                                    children: "Retry"
+                                demonstrationSaveStatus && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: `text-sm ${demonstrationSaveStatus.startsWith('✅') ? 'text-green-600' : 'text-red-600'}`,
+                                    children: demonstrationSaveStatus
                                 }, void 0, false, {
                                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                    lineNumber: 356,
+                                    lineNumber: 527,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 353,
-                            columnNumber: 13
-                        }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                            className: "text-sm text-gray-600",
-                            children: "Ready to load"
-                        }, void 0, false, {
-                            fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 364,
-                            columnNumber: 13
+                            lineNumber: 514,
+                            columnNumber: 11
                         }, this)
-                    ]
-                }, void 0, true, {
-                    fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                    lineNumber: 346,
-                    columnNumber: 9
-                }, this)
-            }, void 0, false, {
+                    }, void 0, false, {
+                        fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
+                        lineNumber: 513,
+                        columnNumber: 9
+                    }, this)
+                ]
+            }, void 0, true, {
                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                lineNumber: 345,
+                lineNumber: 489,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8585,7 +8752,7 @@ function PlayYourAI({ onBack }) {
                                             children: "You (Blue): "
                                         }, void 0, false, {
                                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                            lineNumber: 395,
+                                            lineNumber: 561,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8596,13 +8763,13 @@ function PlayYourAI({ onBack }) {
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                            lineNumber: 396,
+                                            lineNumber: 562,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                    lineNumber: 394,
+                                    lineNumber: 560,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8612,7 +8779,7 @@ function PlayYourAI({ onBack }) {
                                             children: "AI (Red): "
                                         }, void 0, false, {
                                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                            lineNumber: 399,
+                                            lineNumber: 565,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8623,19 +8790,19 @@ function PlayYourAI({ onBack }) {
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                            lineNumber: 400,
+                                            lineNumber: 566,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                    lineNumber: 398,
+                                    lineNumber: 564,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 393,
+                            lineNumber: 559,
                             columnNumber: 11
                         }, this),
                         isPaused && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8643,7 +8810,7 @@ function PlayYourAI({ onBack }) {
                             children: "PAUSED (Press ESC to resume)"
                         }, void 0, false, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 404,
+                            lineNumber: 570,
                             columnNumber: 13
                         }, this),
                         gameOverWinner && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8653,30 +8820,30 @@ function PlayYourAI({ onBack }) {
                                 children: "You Win!"
                             }, void 0, false, {
                                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                lineNumber: 409,
+                                lineNumber: 575,
                                 columnNumber: 17
                             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                 className: "text-red-600",
                                 children: "AI Wins!"
                             }, void 0, false, {
                                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                                lineNumber: 411,
+                                lineNumber: 577,
                                 columnNumber: 17
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 407,
+                            lineNumber: 573,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                    lineNumber: 392,
+                    lineNumber: 558,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                lineNumber: 391,
+                lineNumber: 557,
                 columnNumber: 7
             }, this),
             isModelLoaded ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8694,12 +8861,12 @@ function PlayYourAI({ onBack }) {
                     scale: scale
                 }, void 0, false, {
                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                    lineNumber: 421,
+                    lineNumber: 587,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                lineNumber: 420,
+                lineNumber: 586,
                 columnNumber: 9
             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "w-full max-w-4xl p-8 bg-gray-100 border border-gray-300 rounded text-center",
@@ -8708,12 +8875,12 @@ function PlayYourAI({ onBack }) {
                     children: isLoadingModel ? 'Loading model from Supabase...' : 'Waiting for AI model to load from Supabase'
                 }, void 0, false, {
                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                    lineNumber: 436,
+                    lineNumber: 602,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                lineNumber: 435,
+                lineNumber: 601,
                 columnNumber: 9
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8726,21 +8893,21 @@ function PlayYourAI({ onBack }) {
                             children: "Controls:"
                         }, void 0, false, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 445,
+                            lineNumber: 611,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             children: "Player 1 (Blue - You): Arrow keys to move, Space to shoot"
                         }, void 0, false, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 446,
+                            lineNumber: 612,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             children: "Press ESC to pause/resume"
                         }, void 0, false, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 447,
+                            lineNumber: 613,
                             columnNumber: 11
                         }, this),
                         gameOverWinner && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$1$2e$0_$40$babel$2b$core$40$7$2e$28$2e$5_react$2d$dom$40$19$2e$2$2e$3_react$40$19$2e$2$2e$3_$5f$react$40$19$2e$2$2e$3$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -8749,24 +8916,24 @@ function PlayYourAI({ onBack }) {
                             children: "Play Again"
                         }, void 0, false, {
                             fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                            lineNumber: 449,
+                            lineNumber: 615,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                    lineNumber: 444,
+                    lineNumber: 610,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-                lineNumber: 443,
+                lineNumber: 609,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/website/app/games/tank-trouble/components/PlayYourAI.tsx",
-        lineNumber: 332,
+        lineNumber: 476,
         columnNumber: 5
     }, this);
 }

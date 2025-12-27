@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"blog/backend/ai-tank/training"
+	"blog/backend/ai-tank/types"
 )
 
 // LogEntry represents a single log entry
@@ -21,13 +22,14 @@ type LogEntry struct {
 
 // Server provides HTTP endpoints for monitoring training
 type Server struct {
-	trainer  *training.Trainer
-	port     int
-	logs     []LogEntry
-	logMu    sync.RWMutex
-	maxLogs  int
-	httpServer *http.Server
-	mu       sync.Mutex
+	trainer         *training.Trainer
+	supabaseStorage *SupabaseStorage // For saving demonstrations
+	port            int
+	logs            []LogEntry
+	logMu           sync.RWMutex
+	maxLogs         int
+	httpServer      *http.Server
+	mu              sync.Mutex
 }
 
 // Global log buffer for capturing logs
@@ -56,7 +58,7 @@ func (s *Server) addLog(level, message string) {
 	}
 
 	s.logs = append(s.logs, entry)
-	
+
 	// Keep only the most recent logs
 	// Use circular buffer approach to avoid memory leaks
 	if len(s.logs) > s.maxLogs {
@@ -69,12 +71,14 @@ func (s *Server) addLog(level, message string) {
 }
 
 // NewServer creates a new monitoring server
-func NewServer(trainer *training.Trainer, port int) *Server {
+// supabaseStorage is required for saving demonstrations - will error if nil when demonstrations endpoint is called
+func NewServer(trainer *training.Trainer, port int, supabaseStorage *SupabaseStorage) *Server {
 	server := &Server{
-		trainer: trainer,
-		port:    port,
-		logs:    make([]LogEntry, 0),
-		maxLogs: 200, // Keep last 200 log entries
+		trainer:         trainer,
+		supabaseStorage: supabaseStorage,
+		port:            port,
+		logs:            make([]LogEntry, 0),
+		maxLogs:         200, // Keep last 200 log entries
 	}
 	initLogBuffer(server)
 	return server
@@ -90,6 +94,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/api/debug/simulation", s.handleDebugSimulation)
+	mux.HandleFunc("/api/demonstrations", s.handleDemonstrations)
 
 	// Dashboard UI (includes simulation viewer)
 	mux.HandleFunc("/", s.handleDashboard)
@@ -97,14 +102,14 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("Starting training dashboard server on http://localhost%s", addr)
 	log.Printf("Dashboard available at http://localhost%s", addr)
-	
+
 	s.mu.Lock()
 	s.httpServer = &http.Server{
 		Addr:    addr,
 		Handler: mux,
 	}
 	s.mu.Unlock()
-	
+
 	return s.httpServer.ListenAndServe()
 }
 
@@ -113,11 +118,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	server := s.httpServer
 	s.mu.Unlock()
-	
+
 	if server == nil {
 		return nil
 	}
-	
+
 	return server.Shutdown(ctx)
 }
 
@@ -129,10 +134,10 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := s.trainer.GetStats()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	json.NewEncoder(w).Encode(stats)
 }
 
@@ -144,10 +149,10 @@ func (s *Server) handleModelInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	weights := s.trainer.GetModelWeights()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"layers":   weights.Layers,
 		"metadata": weights.Metadata,
@@ -158,7 +163,7 @@ func (s *Server) handleModelInfo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "healthy",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -179,9 +184,9 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"logs": logs,
+		"logs":  logs,
 		"count": len(logs),
 	})
 }
@@ -220,32 +225,32 @@ func (s *Server) handleDebugSimulation(w http.ResponseWriter, r *http.Request) {
 	gameReward := 0.0
 	tickCount := 0
 
-		for step := range stepChan {
-			tickCount++
-			gameReward += step.Reward
+	for step := range stepChan {
+		tickCount++
+		gameReward += step.Reward
 
-			// Debug: Log first few ticks to verify data
-			if tickCount <= 3 {
-				if step.GameState != nil {
-					log.Printf("Debug tick %d: AI Tank at (%.2f, %.2f, angle=%.2f), Enemy at (%.2f, %.2f, angle=%.2f), Bullets: %d, Barriers: %d",
-						tickCount,
-						step.GameState.AITank.X, step.GameState.AITank.Y, step.GameState.AITank.Angle,
-						step.GameState.EnemyTank.X, step.GameState.EnemyTank.Y, step.GameState.EnemyTank.Angle,
-						len(step.GameState.Bullets), len(step.GameState.Barriers))
-				}
+		// Debug: Log first few ticks to verify data
+		if tickCount <= 3 {
+			if step.GameState != nil {
+				log.Printf("Debug tick %d: AI Tank at (%.2f, %.2f, angle=%.2f), Enemy at (%.2f, %.2f, angle=%.2f), Bullets: %d, Barriers: %d",
+					tickCount,
+					step.GameState.AITank.X, step.GameState.AITank.Y, step.GameState.AITank.Angle,
+					step.GameState.EnemyTank.X, step.GameState.EnemyTank.Y, step.GameState.EnemyTank.Angle,
+					len(step.GameState.Bullets), len(step.GameState.Barriers))
 			}
+		}
 
-			// Create response with game state for visualization
-			response := map[string]interface{}{
-				"type":          "tick",
-				"gameState":     step.GameState,
-				"gameNumber":    gameNumber,
-				"tickCount":     tickCount,
-				"currentReward": step.Reward,
-				"totalReward":   gameReward,
-				"averageReward": gameReward / float64(tickCount),
-				"done":          step.Done,
-			}
+		// Create response with game state for visualization
+		response := map[string]interface{}{
+			"type":          "tick",
+			"gameState":     step.GameState,
+			"gameNumber":    gameNumber,
+			"tickCount":     tickCount,
+			"currentReward": step.Reward,
+			"totalReward":   gameReward,
+			"averageReward": gameReward / float64(tickCount),
+			"done":          step.Done,
+		}
 
 		jsonData, err := json.Marshal(response)
 		if err != nil {
@@ -260,15 +265,15 @@ func (s *Server) handleDebugSimulation(w http.ResponseWriter, r *http.Request) {
 		// If game ended, send game end message and reset for next game
 		if step.Done {
 			gameEndResponse := map[string]interface{}{
-				"type":         "gameEnd",
-				"gameNumber":   gameNumber,
-				"totalReward":  gameReward,
+				"type":          "gameEnd",
+				"gameNumber":    gameNumber,
+				"totalReward":   gameReward,
 				"averageReward": gameReward / float64(tickCount),
 			}
 			jsonData, _ := json.Marshal(gameEndResponse)
 			fmt.Fprintf(w, "data: %s\n\n", string(jsonData))
 			flusher.Flush()
-			
+
 			// Reset for next game
 			gameNumber++
 			gameReward = 0.0
@@ -279,6 +284,149 @@ func (s *Server) handleDebugSimulation(w http.ResponseWriter, r *http.Request) {
 	// Send completion message if channel closes
 	fmt.Fprintf(w, "data: %s\n\n", `{"type":"complete","message":"Stream ended"}`)
 	flusher.Flush()
+}
+
+// handleDemonstrations handles saving human demonstrations to Supabase
+func (s *Server) handleDemonstrations(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		// Hard error if Supabase is not initialized
+		if s.supabaseStorage == nil {
+			errorMsg := "Supabase storage not initialized - cannot save demonstrations"
+			log.Printf("ERROR: %s", errorMsg)
+			AddLog("error", errorMsg)
+			http.Error(w, errorMsg, http.StatusInternalServerError)
+			return
+		}
+
+		var req struct {
+			Steps     []map[string]interface{} `json:"steps"`
+			IsDefault bool                     `json:"isDefault"`
+			Metadata  map[string]interface{}   `json:"metadata"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			errorMsg := fmt.Sprintf("Invalid request: %v", err)
+			log.Printf("ERROR: %s", errorMsg)
+			http.Error(w, errorMsg, http.StatusBadRequest)
+			return
+		}
+
+		// Convert steps to types.Step format
+		steps := make([]types.Step, 0, len(req.Steps))
+		for _, stepMap := range req.Steps {
+			step := types.Step{}
+
+			// Extract state
+			if stateVal, ok := stepMap["state"]; ok {
+				if stateSlice, ok := stateVal.([]interface{}); ok {
+					step.State = make([]float64, len(stateSlice))
+					for i, v := range stateSlice {
+						if f, ok := v.(float64); ok {
+							step.State[i] = f
+						}
+					}
+				}
+			}
+
+			// Extract action
+			if actionVal, ok := stepMap["action"]; ok {
+				if actionFloat, ok := actionVal.(float64); ok {
+					step.Action = int(actionFloat)
+				}
+			}
+
+			// Extract reward (required for Step type)
+			// For human demonstrations, default to 0.1 (small positive reward for imitation learning)
+			if rewardVal, ok := stepMap["reward"]; ok {
+				if rewardFloat, ok := rewardVal.(float64); ok {
+					step.Reward = rewardFloat
+				} else {
+					step.Reward = 0.1 // Default for imitation learning
+				}
+			} else {
+				step.Reward = 0.1 // Default for imitation learning if not provided
+			}
+
+			// Extract nextState
+			if nextStateVal, ok := stepMap["nextState"]; ok {
+				if nextStateSlice, ok := nextStateVal.([]interface{}); ok {
+					step.NextState = make([]float64, len(nextStateSlice))
+					for i, v := range nextStateSlice {
+						if f, ok := v.(float64); ok {
+							step.NextState[i] = f
+						}
+					}
+				}
+			}
+
+			// Extract done
+			if doneVal, ok := stepMap["done"]; ok {
+				if doneBool, ok := doneVal.(bool); ok {
+					step.Done = doneBool
+				}
+			}
+
+			steps = append(steps, step)
+		}
+
+		// Prepare metadata with defaults
+		metadata := req.Metadata
+		if metadata == nil {
+			metadata = make(map[string]interface{})
+		}
+		if _, ok := metadata["timestamp"]; !ok {
+			metadata["timestamp"] = time.Now().UTC().Format(time.RFC3339)
+		}
+		if _, ok := metadata["episodeLength"]; !ok {
+			metadata["episodeLength"] = len(steps)
+		}
+
+		// Save to Supabase
+		err := s.supabaseStorage.SaveDemonstration(steps, metadata, req.IsDefault)
+		if err != nil {
+			errorMsg := fmt.Sprintf("Failed to save demonstration to Supabase: %v", err)
+			log.Printf("ERROR: %s", errorMsg)
+			AddLog("error", errorMsg)
+			http.Error(w, errorMsg, http.StatusInternalServerError)
+			return
+		}
+
+		successMsg := fmt.Sprintf("✅ Saved %d demonstration steps to Supabase (isDefault: %v)", len(steps), req.IsDefault)
+		log.Printf(successMsg)
+		AddLog("success", successMsg)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "saved",
+			"steps":   len(steps),
+			"message": successMsg,
+		})
+	} else if r.Method == http.MethodGet {
+		// Return available demonstrations count or info
+		w.Header().Set("Content-Type", "application/json")
+		if s.supabaseStorage == nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": "Demonstration API - Supabase not initialized",
+				"error":   "Supabase storage not configured",
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": "Demonstration API - use POST to save demonstrations",
+				"status":  "ready",
+			})
+		}
+	} else {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // handleDashboard serves the dashboard HTML

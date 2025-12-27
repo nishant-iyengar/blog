@@ -10,20 +10,44 @@ import (
 	"blog/backend/ai-tank/types"
 )
 
-// ImitationLearning pre-trains an agent using rule-based demonstrations
+// DemonstrationStorage is an interface for loading demonstrations
+// This breaks the import cycle between training and api packages
+type DemonstrationStorage interface {
+	GetDefaultDemonstrations(limit int) ([]types.Step, error)
+}
+
+// ImitationLearning pre-trains an agent using rule-based and/or human demonstrations
 // This is a form of behavioral cloning - learning to imitate expert behavior
-func ImitationLearning(agent *model.DQNAgent, numEpisodes int, rng *rand.Rand) error {
-	log.Printf("[ImitationLearning] Starting with %d episodes", numEpisodes)
+// If demoStorage is provided and useHumanDemos is true, loads human demonstrations from storage
+func ImitationLearning(agent *model.DQNAgent, numEpisodes int, rng *rand.Rand, demoStorage DemonstrationStorage, useHumanDemos bool) error {
+	log.Printf("[ImitationLearning] Starting with %d episodes (useHumanDemos: %v)", numEpisodes, useHumanDemos)
 	
 	cfg, err := config.GetConfig()
 	if err != nil {
 		return err
 	}
 
+	// Load human demonstrations from storage if available
+	demonstrations := make([]types.Step, 0)
+	humanDemoCount := 0
+	if useHumanDemos && demoStorage != nil {
+		log.Printf("[ImitationLearning] Loading default human demonstrations from storage...")
+		// Load human demonstrations: limit to last 500 games to balance storage and training data
+		// Each game typically has 200-1000 steps, so this gives us ~100k-500k steps
+		// Adjust limit based on storage constraints and training needs
+		humanDemos, err := demoStorage.GetDefaultDemonstrations(500) // Load last 500 games
+		if err != nil {
+			log.Printf("[ImitationLearning] Warning: Failed to load human demonstrations: %v", err)
+		} else {
+			humanDemoCount = len(humanDemos)
+			log.Printf("[ImitationLearning] Loaded %d human demonstration steps from Supabase (from most recent 500 games)", humanDemoCount)
+			demonstrations = append(demonstrations, humanDemos...)
+		}
+	}
+
 	ruleBasedAI := game.NewRuleBasedAI(cfg)
 	
-	// Collect demonstrations from rule-based AI
-	demonstrations := make([]types.Step, 0)
+	// Collect additional demonstrations from rule-based AI if needed
 	
 	for episode := 0; episode < numEpisodes; episode++ {
 		// Create a simple game state for demonstration
@@ -112,13 +136,26 @@ func ImitationLearning(agent *model.DQNAgent, numEpisodes int, rng *rand.Rand) e
 	batchSize := cfg.RL.DQN.BatchSize
 	numBatches := len(demonstrations) / batchSize
 	
-	log.Printf("[ImitationLearning] Collected %d demonstrations, will train on %d batches (batch size: %d)", 
-		len(demonstrations), numBatches, batchSize)
+	totalDemos := len(demonstrations)
+	if totalDemos == 0 {
+		log.Printf("[ImitationLearning] Warning: No demonstrations collected, skipping pre-training")
+		return nil
+	}
+
+	log.Printf("[ImitationLearning] Collected %d total demonstrations, will train on %d batches (batch size: %d)", 
+		totalDemos, numBatches, batchSize)
 	
 	// Train on all batches for better pre-training
+	// If we have human demonstrations, train more batches
 	maxBatches := numBatches
-	if maxBatches > 50 {
-		maxBatches = 50 // Cap at 50 batches to avoid excessive pre-training
+	if useHumanDemos && humanDemoCount > 0 {
+		// Use more batches when we have human demonstrations
+		maxBatches = numBatches * 2
+		if maxBatches > 100 {
+			maxBatches = 100 // Cap at 100 batches
+		}
+	} else if maxBatches > 50 {
+		maxBatches = 50 // Cap at 50 batches for rule-based only
 	}
 	for i := 0; i < maxBatches; i++ {
 		start := i * batchSize

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"blog/backend/ai-tank/types"
+
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -26,17 +27,17 @@ func NewDQNAgent(config *types.DQNConfig, rng *rand.Rand) *DQNAgent {
 	}
 
 	networkConfig := &NetworkConfig{
-		InputSize:       config.ObservationSize,
-		HiddenLayers:    config.HiddenLayers,
+		InputSize:        config.ObservationSize,
+		HiddenLayers:     config.HiddenLayers,
 		OutputSize:       config.ActionSize,
-		LearningRate:    config.LearningRate,
-		Activation:      "relu",
+		LearningRate:     config.LearningRate,
+		Activation:       "relu",
 		OutputActivation: "linear",
 	}
 
 	qNetwork := NewNeuralNetwork(networkConfig, rng)
 	targetNetwork := NewNeuralNetwork(networkConfig, rng)
-	
+
 	// Copy weights from Q-network to target network
 	copyNetworkWeights(qNetwork, targetNetwork)
 
@@ -58,7 +59,7 @@ func (d *DQNAgent) SelectAction(observation []float64, training bool) int {
 
 	// Exploitation: best action according to Q-network
 	qValues := d.QNetwork.Predict(observation)
-	
+
 	bestAction := 0
 	bestQValue := qValues[0]
 	for i := 1; i < len(qValues); i++ {
@@ -78,7 +79,7 @@ func (d *DQNAgent) Train(steps []types.Step) (float64, error) {
 	}
 
 	batchSize := int(math.Min(float64(len(steps)), float64(d.Config.BatchSize)))
-	
+
 	// Prepare batch
 	states := make([][]float64, batchSize)
 	actions := make([]int, batchSize)
@@ -109,11 +110,11 @@ func (d *DQNAgent) Train(steps []types.Step) (float64, error) {
 	// Compute target Q-values: r + gamma * max_a Q_target(s', a) if not done
 	targets := make([][]float64, batchSize)
 	totalLoss := 0.0
-	
+
 	for i := 0; i < batchSize; i++ {
 		target := make([]float64, len(currentQValues[i]))
 		copy(target, currentQValues[i])
-		
+
 		if dones[i] {
 			target[actions[i]] = rewards[i]
 		} else {
@@ -126,9 +127,9 @@ func (d *DQNAgent) Train(steps []types.Step) (float64, error) {
 			}
 			target[actions[i]] = rewards[i] + d.Config.Gamma*maxNextQ
 		}
-		
+
 		targets[i] = target
-		
+
 		// Compute loss (MSE)
 		diff := target[actions[i]] - currentQValues[i][actions[i]]
 		totalLoss += diff * diff
@@ -163,31 +164,31 @@ func (d *DQNAgent) Train(steps []types.Step) (float64, error) {
 func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, actions []int) error {
 	learningRate := d.Config.LearningRate
 	batchSize := len(states)
-	
+
 	// Gradient clipping threshold to prevent exploding gradients
 	maxGradNorm := 10.0
-	
+
 	// Accumulate gradients across batch
 	weightGrads := make([]*mat.Dense, len(d.QNetwork.Layers))
 	biasGrads := make([]*mat.VecDense, len(d.QNetwork.Layers))
-	
+
 	// Initialize gradient accumulators
 	for i, layer := range d.QNetwork.Layers {
 		r, c := layer.Weights.Dims()
 		weightGrads[i] = mat.NewDense(r, c, nil)
 		biasGrads[i] = mat.NewVecDense(layer.Biases.Len(), nil)
 	}
-	
+
 	// Process each sample in the batch
 	for sampleIdx, state := range states {
 		// Forward pass - store activations for backprop
 		activations := make([]*mat.VecDense, len(d.QNetwork.Layers)+1)
 		preActivations := make([]*mat.VecDense, len(d.QNetwork.Layers))
-		
+
 		input := mat.NewVecDense(len(state), state)
 		activations[0] = input
 		current := input
-		
+
 		// Forward pass storing activations
 		for layerIdx, layer := range d.QNetwork.Layers {
 			// Pre-activation: z = Wx + b
@@ -196,7 +197,7 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 			output.MulVec(layer.Weights, current)
 			output.AddVec(output, layer.Biases)
 			preActivations[layerIdx] = output
-			
+
 			// Apply activation
 			activated := mat.NewVecDense(output.Len(), nil)
 			activated.CopyVec(output)
@@ -204,12 +205,12 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 			activations[layerIdx+1] = activated
 			current = activated
 		}
-		
+
 		// Compute output error (only for the action taken)
 		action := actions[sampleIdx]
 		target := targets[sampleIdx]
 		predicted := activations[len(activations)-1]
-		
+
 		// Error gradient for output layer (only for the action taken)
 		outputError := mat.NewVecDense(predicted.Len(), nil)
 		for i := 0; i < predicted.Len(); i++ {
@@ -221,19 +222,19 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 				outputError.SetVec(i, 0)
 			}
 		}
-		
+
 		// Backpropagate through layers
 		delta := outputError
 		for layerIdx := len(d.QNetwork.Layers) - 1; layerIdx >= 0; layerIdx-- {
 			layer := d.QNetwork.Layers[layerIdx]
 			activation := activations[layerIdx]
 			preActivation := preActivations[layerIdx]
-			
+
 			// Apply activation derivative
 			deltaWithDerivative := mat.NewVecDense(delta.Len(), nil)
 			deltaWithDerivative.CopyVec(delta)
 			applyActivationDerivative(deltaWithDerivative, preActivation, layer.Activation)
-			
+
 			// Compute weight gradients: grad_W = delta * activation^T
 			// For matrix: grad_W[i,j] = delta[i] * activation[j]
 			r, c := layer.Weights.Dims()
@@ -244,13 +245,13 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 					weightGrads[layerIdx].Set(row, col, currentGrad+grad)
 				}
 			}
-			
+
 			// Bias gradients: grad_b = delta
 			for i := 0; i < deltaWithDerivative.Len(); i++ {
 				currentBiasGrad := biasGrads[layerIdx].AtVec(i)
 				biasGrads[layerIdx].SetVec(i, currentBiasGrad+deltaWithDerivative.AtVec(i))
 			}
-			
+
 			// Propagate error to previous layer: delta_prev = W^T * delta
 			if layerIdx > 0 {
 				prevDelta := mat.NewVecDense(activation.Len(), nil)
@@ -262,7 +263,7 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 			}
 		}
 	}
-	
+
 	// Compute gradient norm for clipping
 	totalGradNorm := 0.0
 	for _, grad := range weightGrads {
@@ -280,18 +281,18 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 			totalGradNorm += g * g
 		}
 	}
-	
+
 	gradNorm := math.Sqrt(totalGradNorm)
 	scale := 1.0
 	if gradNorm > maxGradNorm {
 		// Scale down gradients to prevent exploding gradients
 		scale = maxGradNorm / gradNorm
 	}
-	
+
 	// Average gradients over batch and update weights (with clipping if needed)
 	for layerIdx, layer := range d.QNetwork.Layers {
 		r, c := layer.Weights.Dims()
-		
+
 		// Average gradients and apply clipping scale
 		for row := 0; row < r; row++ {
 			for col := 0; col < c; col++ {
@@ -300,7 +301,7 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 				layer.Weights.Set(row, col, currentWeight+learningRate*grad)
 			}
 		}
-		
+
 		// Update biases
 		for i := 0; i < layer.Biases.Len(); i++ {
 			grad := biasGrads[layerIdx].AtVec(i) / float64(batchSize) * scale
@@ -308,7 +309,7 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 			layer.Biases.SetVec(i, currentBias+learningRate*grad)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -316,7 +317,7 @@ func (d *DQNAgent) updateWeights(states [][]float64, targets [][]float64, action
 // Modifies delta in-place based on activation type
 func applyActivationDerivative(delta, preActivation *mat.VecDense, activation string) {
 	length := delta.Len()
-	
+
 	switch activation {
 	case "relu":
 		// ReLU derivative: 1 if x > 0, else 0
@@ -343,20 +344,25 @@ func (d *DQNAgent) GetEpsilon() float64 {
 	return d.Epsilon
 }
 
+// SetEpsilon sets the epsilon value (useful after pre-training)
+func (d *DQNAgent) SetEpsilon(epsilon float64) {
+	d.Epsilon = math.Max(d.Config.EpsilonEnd, math.Min(1.0, epsilon))
+}
+
 // GetWeights returns the Q-network weights in a format suitable for storage
 func (d *DQNAgent) GetWeights() *types.ModelWeights {
 	weights := d.QNetwork.GetWeights()
-	
+
 	layers := make([]types.LayerWeights, len(weights))
 	config := d.QNetwork.Config
-	
+
 	// Reconstruct layer structure
 	prevSize := config.InputSize
 	for i, hiddenSize := range config.HiddenLayers {
 		layerWeights := weights[i]
 		weightSize := prevSize * hiddenSize
 		biasSize := hiddenSize
-		
+
 		layers[i] = types.LayerWeights{
 			Layer:   i,
 			Weights: layerWeights[:weightSize],
@@ -364,19 +370,19 @@ func (d *DQNAgent) GetWeights() *types.ModelWeights {
 		}
 		prevSize = hiddenSize
 	}
-	
+
 	// Output layer
 	outputLayerIdx := len(weights) - 1
 	outputLayerWeights := weights[outputLayerIdx]
 	outputWeightSize := prevSize * config.OutputSize
 	outputBiasSize := config.OutputSize
-	
+
 	layers[outputLayerIdx] = types.LayerWeights{
 		Layer:   outputLayerIdx,
 		Weights: outputLayerWeights[:outputWeightSize],
 		Biases:  outputLayerWeights[outputWeightSize : outputWeightSize+outputBiasSize],
 	}
-	
+
 	return &types.ModelWeights{
 		Layers: layers,
 		Metadata: types.ModelMetadata{
@@ -395,7 +401,7 @@ func (d *DQNAgent) SetWeights(weights *types.ModelWeights) error {
 	for i, layer := range weights.Layers {
 		internalWeights[i] = append(layer.Weights, layer.Biases...)
 	}
-	
+
 	return d.QNetwork.SetWeights(internalWeights)
 }
 
@@ -403,7 +409,7 @@ func (d *DQNAgent) SetWeights(weights *types.ModelWeights) error {
 func copyNetworkWeights(source, target *NeuralNetwork) {
 	for i, sourceLayer := range source.Layers {
 		targetLayer := target.Layers[i]
-		
+
 		// Copy weights
 		r, c := sourceLayer.Weights.Dims()
 		for row := 0; row < r; row++ {
@@ -411,11 +417,10 @@ func copyNetworkWeights(source, target *NeuralNetwork) {
 				targetLayer.Weights.Set(row, col, sourceLayer.Weights.At(row, col))
 			}
 		}
-		
+
 		// Copy biases
 		for j := 0; j < sourceLayer.Biases.Len(); j++ {
 			targetLayer.Biases.SetVec(j, sourceLayer.Biases.AtVec(j))
 		}
 	}
 }
-

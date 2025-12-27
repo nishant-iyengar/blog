@@ -1,0 +1,12 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/animals/page": "app/animals/page.js",
+  "/api/backend/models/latest/route": "app/api/backend/models/latest/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/games/page": "app/games/page.js",
+  "/games/tank-trouble/page": "app/games/tank-trouble/page.js",
+  "/page": "app/page.js",
+  "/photos/page": "app/photos/page.js",
+  "/posts/[slug]/page": "app/posts/[slug]/page.js"
+}

@@ -54,6 +54,8 @@ import { DEFAULT_AI_CONFIG, type AIConfig, rlModelManager } from '@/app/games/ta
 import { DQNAgent, DEFAULT_DQN_CONFIG } from '@/app/games/tank-trouble/ai-tank/rl-dqn-model';
 import { TensorFlowJSModel, type ExtendedRLModel } from '@/app/games/tank-trouble/ai-tank/rl-model';
 import type { AIDecision } from '@/app/games/tank-trouble/ai-tank/types';
+import { extractObservation, type Observation } from '@/app/games/tank-trouble/ai-tank/rl-observation';
+import { keysToAction } from '@/app/games/tank-trouble/ai-tank/rl-actions';
 // import { listSavedModels, type SavedModel } from '@/app/games/tank-trouble/ai-tank/rl-model-storage'; // Commented out - using Supabase instead
 import { TICK_INTERVAL } from '@/app/games/tank-trouble/config';
 
@@ -83,10 +85,25 @@ export function PlayYourAI({ onBack }: PlayYourAIProps) {
   const [gameOverWinner, setGameOverWinner] = useState<'blue' | 'red' | null>(null);
   const [isPaused, setIsPaused] = useState(false);
 
+  // Demonstration collection state
+  const [demonstrationSteps, setDemonstrationSteps] = useState<Array<{
+    state: number[];
+    action: number;
+    reward: number;
+    nextState: number[];
+    done: boolean;
+  }>>([]);
+  // Use refs to avoid dependency cycles in useEffect
+  const previousObservationRef = useRef<Observation | null>(null);
+  const previousActionRef = useRef<number | null>(null); // Capture action that was actually taken
+  const [isSavingDemonstrations, setIsSavingDemonstrations] = useState(false);
+  const [demonstrationSaveStatus, setDemonstrationSaveStatus] = useState<string | null>(null);
+
   const tankImages = useTankImages();
   const gameInput = useGameInput({ gameOver: gameOverWinner !== null });
 
   // Load latest model from Supabase
+  // Note: This callback depends on dqnAgent, but we only load once on mount
   const loadLatestModelFromSupabase = useCallback(async () => {
     setIsLoadingModel(true);
     setModelError(null);
@@ -234,20 +251,84 @@ export function PlayYourAI({ onBack }: PlayYourAIProps) {
     }
   }, [dqnAgent]);
 
-  // Auto-load latest model on mount
+  // Auto-load latest model on mount (only once)
   useEffect(() => {
     loadLatestModelFromSupabase();
-  }, [loadLatestModelFromSupabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Intentionally only run on mount - dqnAgent is initialized inside loadLatestModelFromSupabase
+  }, []); // Empty deps - only run once on mount
+
+  // Save demonstrations to backend
+  const saveDemonstrations = useCallback(async () => {
+    if (demonstrationSteps.length === 0) {
+      return;
+    }
+
+    setIsSavingDemonstrations(true);
+    setDemonstrationSaveStatus(null);
+
+    try {
+      // Generate unique game ID for this session
+      const gameId = crypto.randomUUID();
+      
+      const response = await fetch('http://localhost:8080/api/demonstrations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          steps: demonstrationSteps,
+          isDefault: true,
+          metadata: {
+            gameId: gameId, // Unique identifier for this game session
+            episodeLength: demonstrationSteps.length,
+            totalReward: 0, // Not calculated for human demonstrations
+            timestamp: new Date().toISOString(),
+            // Note: Each game creates one demonstration record with all steps
+            // This allows us to distinguish between different game sessions
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to save: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      setDemonstrationSaveStatus(`✅ Saved ${result.steps} demonstration steps`);
+      
+      // Clear demonstrations after successful save
+      setDemonstrationSteps([]);
+      previousObservationRef.current = null;
+      previousActionRef.current = null;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setDemonstrationSaveStatus(`❌ Failed to save: ${errorMessage}`);
+      console.error('Failed to save demonstrations:', error);
+    } finally {
+      setIsSavingDemonstrations(false);
+    }
+  }, [demonstrationSteps]);
 
   // Reset game
   const resetGame = useCallback(() => {
+    // Save demonstrations before resetting if game ended
+    if (gameOverWinner !== null && demonstrationSteps.length > 0) {
+      saveDemonstrations();
+    }
+
     const initialTanks = getInitialSpawnPositions(typedMapData, barriers, suns);
     setTanks(initialTanks);
     setBullets([]);
     setLastShotTimes({ blue: 0, red: 0 });
     setGameOverWinner(null);
     setIsPaused(false);
-  }, [typedMapData, barriers, suns]);
+    // Reset demonstration state refs
+    previousObservationRef.current = null;
+    previousActionRef.current = null;
+    // Don't reset demonstrationSteps here - let saveDemonstrations clear them
+  }, [typedMapData, barriers, suns, gameOverWinner, demonstrationSteps, saveDemonstrations]);
 
   // Game logic instance
   const gameLogicInstance: GameLogicInstance = useMemo(() => ({
@@ -293,6 +374,82 @@ export function PlayYourAI({ onBack }: PlayYourAIProps) {
       setGameOverWinner(winner);
     },
   });
+
+  // Collect demonstration steps during gameplay
+  // IMPORTANT: We need to capture the action that was actually taken, not current keyboard state
+  // Flow: BEFORE tick -> capture state + action, AFTER tick -> capture nextState
+  useEffect(() => {
+    if (isPaused || !isModelLoaded || gameOverWinner !== null || tanks.length < 2) {
+      return;
+    }
+
+    // Extract observation from blue tank's perspective (human player)
+    const blueTank = tanks[0];
+    const redTank = tanks[1];
+
+    if (!blueTank || !redTank) {
+      return;
+    }
+
+    // Create AIContext from blue tank's perspective
+    const context = {
+      aiTank: blueTank,      // Blue tank is "AI" from its perspective
+      enemyTank: redTank,    // Red tank is "enemy"
+      bullets: bullets,
+      barriers: barriers,
+      suns: suns,
+      mapWidth: typedMapData.width,
+      mapHeight: typedMapData.height,
+      tickTime: Date.now(),
+      config: DEFAULT_AI_CONFIG,
+    };
+
+    const currentObservation = extractObservation(context);
+
+    // If we have a previous observation AND previous action, we can create a step
+    // This means an action was taken that transitioned from previousObservation to currentObservation
+    const prevObs = previousObservationRef.current;
+    const prevAction = previousActionRef.current;
+    
+    if (prevObs && prevAction !== null) {
+      // Check if game ended (this tick)
+      const done = blueTank.lives <= 0 || redTank.lives <= 0;
+
+      // Create step with reward (0.1 for imitation learning - encourages following expert)
+      // Note: We store observations (normalized feature vectors) which contain all game state information
+      // State = observation before action was applied
+      // Action = action that was actually applied (captured before previous tick)
+      // NextState = observation after action was applied
+      const step = {
+        state: prevObs.vector,                 // Game state (observation) BEFORE action
+        action: prevAction,                     // Action that was applied
+        reward: 0.1,                            // Small positive reward for imitation learning
+        nextState: currentObservation.vector,  // Game state (observation) AFTER action
+        done: done,
+      };
+
+      setDemonstrationSteps((prev) => [...prev, step]);
+    }
+
+    // Capture the action that corresponds to current keyboard state
+    // This action will be applied in the next game tick
+    // Note: Since ticks are frequent (72 FPS = ~14ms) and keys don't change rapidly,
+    // the action we capture here is very close to what was applied during the previous tick
+    const nextAction = keysToAction(gameInput.keysRef.current);
+
+    // Update refs for next iteration (refs don't trigger re-renders)
+    // previousObservation becomes the "state" for the next step
+    // previousAction becomes the "action" that was applied (or will be applied)
+    previousObservationRef.current = currentObservation;
+    previousActionRef.current = nextAction;
+  }, [tanks, bullets, barriers, suns, gameInput.keysRef, isPaused, isModelLoaded, gameOverWinner, typedMapData]);
+
+  // Save demonstrations when game ends
+  useEffect(() => {
+    if (gameOverWinner !== null && demonstrationSteps.length > 0 && !isSavingDemonstrations) {
+      saveDemonstrations();
+    }
+  }, [gameOverWinner, demonstrationSteps.length, isSavingDemonstrations, saveDemonstrations]);
 
   // Game loop
   useEffect(() => {
@@ -363,6 +520,28 @@ export function PlayYourAI({ onBack }: PlayYourAIProps) {
           ) : (
             <span className="text-sm text-gray-600">Ready to load</span>
           )}
+        </div>
+        
+        {/* Demonstration Collection Status */}
+        <div className="mt-3 pt-3 border-t border-gray-200">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-semibold">Demonstration Collection:</label>
+            {demonstrationSteps.length > 0 ? (
+              <span className="text-sm text-blue-600">
+                📝 {demonstrationSteps.length} steps collected
+              </span>
+            ) : (
+              <span className="text-sm text-gray-500">Not collecting</span>
+            )}
+            {isSavingDemonstrations && (
+              <span className="text-sm text-gray-600">Saving...</span>
+            )}
+            {demonstrationSaveStatus && (
+              <span className={`text-sm ${demonstrationSaveStatus.startsWith('✅') ? 'text-green-600' : 'text-red-600'}`}>
+                {demonstrationSaveStatus}
+              </span>
+            )}
+          </div>
         </div>
         {/* Commented out: IndexedDB model selection
         <div className="flex items-center gap-4">

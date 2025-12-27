@@ -80,7 +80,79 @@
       "size": 152
     },
     "action": {
-      "numDiscreteActions": 14
+      "numDiscreteActions": 14,
+      "actions": [
+        {
+          "id": 0,
+          "name": "NO_ACTION",
+          "description": "Do nothing"
+        },
+        {
+          "id": 1,
+          "name": "ROTATE_LEFT",
+          "description": "Rotate tank left only"
+        },
+        {
+          "id": 2,
+          "name": "ROTATE_RIGHT",
+          "description": "Rotate tank right only"
+        },
+        {
+          "id": 3,
+          "name": "MOVE_FORWARD",
+          "description": "Move tank forward only"
+        },
+        {
+          "id": 4,
+          "name": "MOVE_BACKWARD",
+          "description": "Move tank backward only"
+        },
+        {
+          "id": 5,
+          "name": "SHOOT",
+          "description": "Shoot only"
+        },
+        {
+          "id": 6,
+          "name": "ROTATE_LEFT_FORWARD",
+          "description": "Rotate left while moving forward"
+        },
+        {
+          "id": 7,
+          "name": "ROTATE_RIGHT_FORWARD",
+          "description": "Rotate right while moving forward"
+        },
+        {
+          "id": 8,
+          "name": "ROTATE_LEFT_SHOOT",
+          "description": "Rotate left while shooting"
+        },
+        {
+          "id": 9,
+          "name": "ROTATE_RIGHT_SHOOT",
+          "description": "Rotate right while shooting"
+        },
+        {
+          "id": 10,
+          "name": "MOVE_FORWARD_SHOOT",
+          "description": "Move forward while shooting"
+        },
+        {
+          "id": 11,
+          "name": "MOVE_BACKWARD_SHOOT",
+          "description": "Move backward while shooting"
+        },
+        {
+          "id": 12,
+          "name": "ROTATE_LEFT_BACKWARD",
+          "description": "Rotate left while moving backward"
+        },
+        {
+          "id": 13,
+          "name": "ROTATE_RIGHT_BACKWARD",
+          "description": "Rotate right while moving backward"
+        }
+      ]
     },
     "dqn": {
       "observationSize": 152,

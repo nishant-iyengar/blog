@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { list } from '@vercel/blob';
 import { isValidFileType, FileType } from './utils';
+// Load environment variables from root .env (not .env.local)
+import './env-loader';
 
 const animalsMetadataDirectory = path.join(process.cwd(), 'content/animals');
 
@@ -31,9 +33,9 @@ export async function getAllAnimalPhotos(): Promise<AnimalPhoto[]> {
     const photos: AnimalPhoto[] = [];
 
     // Get all blobs in the animals/ folder
-    // Check if BLOB_READ_WRITE_TOKEN is available
+    // BLOB_READ_WRITE_TOKEN is loaded from root .env via env-loader
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error('BLOB_READ_WRITE_TOKEN environment variable is not set');
+      console.error('BLOB_READ_WRITE_TOKEN environment variable is not set (should be in root .env)');
       return [];
     }
 

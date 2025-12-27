@@ -140,12 +140,42 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize Supabase storage - REQUIRED for training
+	var modelStorage training.ModelStorage
+	var demoStorage training.DemonstrationStorage
+	supabaseURLStr := getEnvString("SUPABASE_URL", "")
+	if *supabaseURL != "" {
+		supabaseURLStr = *supabaseURL
+	}
+	supabaseKeyStr := getEnvString("SUPABASE_KEY", "")
+	if *supabaseKey != "" {
+		supabaseKeyStr = *supabaseKey
+	}
+	supabaseTableStr := getEnvString("SUPABASE_TABLE", "ai_tank_models")
+	if *supabaseTable != "" {
+		supabaseTableStr = *supabaseTable
+	}
+
+	if supabaseURLStr == "" || supabaseKeyStr == "" {
+		log.Fatalf("ERROR: Supabase configuration required (SUPABASE_URL and SUPABASE_KEY). Cannot train without model storage.")
+	}
+
+	storage, err := api.NewSupabaseStorage(supabaseURLStr, supabaseKeyStr, supabaseTableStr)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to initialize Supabase storage: %v. Training requires access to model storage.", err)
+	}
+
+	modelStorage = storage
+	demoStorage = storage // SupabaseStorage implements both interfaces
+	log.Println("✅ Supabase storage initialized for model and demonstration loading")
+
 	// Create trainer with self-play enabled and imitation learning
 	// true = self-play (both tanks use RL agents)
 	// true = use imitation learning (pre-train from rule-based AI) - increased episodes for better seeding
-	trainer, err := training.NewTrainer(true, true)
+	// Trainer will require a default model to exist - will error if not found
+	trainer, err := training.NewTrainer(true, true, modelStorage, demoStorage)
 	if err != nil {
-		log.Fatalf("Failed to create trainer: %v", err)
+		log.Fatalf("ERROR: Failed to create trainer: %v", err)
 	}
 	log.Println("Trainer initialized with self-play and imitation learning")
 
@@ -159,7 +189,44 @@ func main() {
 	// Start dashboard server if enabled
 	var dashboard *api.Server
 	if *enableDashboard {
-		dashboard = api.NewServer(trainer, *dashboardPort)
+		// Reuse the same SupabaseStorage instance (we know it exists since we checked earlier)
+		var dashboardSupabaseStorage *api.SupabaseStorage
+		// Type assert to get the underlying SupabaseStorage
+		if ss, ok := modelStorage.(*api.SupabaseStorage); ok {
+			dashboardSupabaseStorage = ss
+			api.AddLog("success", "Supabase storage available for demonstrations")
+		}
+
+		// If not available from modelStorage, try to initialize separately
+		if dashboardSupabaseStorage == nil {
+			supabaseURLStr := getEnvString("SUPABASE_URL", "")
+			if *supabaseURL != "" {
+				supabaseURLStr = *supabaseURL
+			}
+			supabaseKeyStr := getEnvString("SUPABASE_KEY", "")
+			if *supabaseKey != "" {
+				supabaseKeyStr = *supabaseKey
+			}
+
+			// Try to initialize Supabase for demonstrations
+			if supabaseURLStr != "" && supabaseKeyStr != "" {
+				storage, err := api.NewSupabaseStorage(supabaseURLStr, supabaseKeyStr, "ai_tank_models")
+				if err == nil {
+					dashboardSupabaseStorage = storage
+					api.AddLog("success", "Supabase storage initialized for demonstrations")
+				} else {
+					warningMsg := fmt.Sprintf("Warning: Failed to initialize Supabase storage for demonstrations: %v", err)
+					log.Printf(warningMsg)
+					api.AddLog("warning", warningMsg)
+				}
+			} else {
+				warningMsg := "Warning: Supabase not configured - demonstration endpoint will return errors"
+				log.Printf(warningMsg)
+				api.AddLog("warning", warningMsg)
+			}
+		}
+
+		dashboard = api.NewServer(trainer, *dashboardPort, dashboardSupabaseStorage)
 		api.AddLog("success", fmt.Sprintf("Dashboard server starting on port %d", *dashboardPort))
 		wg.Add(1)
 		go func() {
@@ -252,6 +319,7 @@ func main() {
 							weights.Metadata.Timestamp = time.Now().UTC().Format(time.RFC3339)
 							weights.Metadata.Episodes = stats.Episodes
 							weights.Metadata.EvalScore = stats.AverageReward
+							weights.Metadata.Source = "rl_training" // Mark as RL-trained model
 
 							var saveMsg string
 							if hasImproved {
@@ -264,7 +332,8 @@ func main() {
 							log.Printf(saveMsg)
 							api.AddLog("info", saveMsg)
 
-							if err := storage.SaveModel(weights); err != nil {
+							// Save as non-default model (isDefault = false)
+							if err := storage.SaveModel(weights, false); err != nil {
 								errorMsg := fmt.Sprintf("❌ Failed to save model to Supabase: %v", err)
 								log.Printf(errorMsg)
 								api.AddLog("error", errorMsg)

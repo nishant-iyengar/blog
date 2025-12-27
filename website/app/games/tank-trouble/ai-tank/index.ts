@@ -159,7 +159,9 @@ export { rlModelManager, type RLModel, type ModelInfo } from './rl-model';
 export { TankTroubleRLEnv, type RLEnvironmentState } from './rl-environment';
 export { extractObservation, getObservationSize, type Observation } from './rl-observation';
 export { calculateReward, type RewardInfo } from './rl-reward';
-export { actionToDecision, NUM_DISCRETE_ACTIONS, DiscreteAction, type ContinuousAction } from './rl-actions';
+export { actionToDecision, NUM_DISCRETE_ACTIONS, decisionToAction } from './rl-actions';
+export { ACTION_DEFINITIONS, ACTION_BY_ID, ACTION_BY_NAME } from './rl-action-config';
+export type { DiscreteAction, ContinuousAction, DecisionToAction, ActionDefinition } from './rl-actions';
 export { useTrainedModel } from './rl-training-example';
 
 
