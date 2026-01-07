@@ -1,5 +1,7 @@
 import createMDX from '@next/mdx';
 import type { NextConfig } from "next";
+// Load environment variables from root .env early
+import './lib/env-loader';
 
 const nextConfig: NextConfig = {
   // Configure `pageExtensions` to include md and mdx files

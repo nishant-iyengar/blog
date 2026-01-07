@@ -9,6 +9,8 @@
  *   pnpm tsx scripts/upload-image.ts ./animal-photo.jpg animals --update-metadata
  */
 
+// Load environment variables from root .env FIRST
+import '../lib/env-loader';
 import { put } from '@vercel/blob';
 import fs from 'fs';
 import path from 'path';

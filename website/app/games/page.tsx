@@ -1,23 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import TankTroublePage from '@/app/games/tank-trouble/page';
 
 export default function GamesPage() {
   const router = useRouter();
-  const [tankTroubleView, setTankTroubleView] = useState<'training' | 'play'>('training');
-
-  // Memoize the view change handler to ensure stable reference
-  const handleViewChange = useCallback((view: 'training' | 'play') => {
-    setTankTroubleView(view);
-  }, []);
-
-  // Memoize the play button handler
-  const handlePlayClick = useCallback(() => {
-    setTankTroubleView('play');
-  }, []);
 
   useEffect(() => {
     // Check if we're on mobile (width < 768px)
@@ -52,18 +41,8 @@ export default function GamesPage() {
             
             <div className="space-y-6">
               <div>
-                <div className="flex items-center gap-4 mb-4">
-                  <h2 className="text-xl font-semibold text-[#4A5568]">Tank Trouble</h2>
-                  {tankTroubleView === 'training' && (
-                    <button
-                      onClick={handlePlayClick}
-                      className="px-4 py-2 bg-green-200 text-white rounded hover:bg-green-300 font-medium shadow-lg"
-                    >
-                      Play your AI
-                    </button>
-                  )}
-                </div>
-                <TankTroublePage view={tankTroubleView} onViewChange={handleViewChange} />
+                <h2 className="text-xl font-semibold text-[#4A5568] mb-4">Tank Trouble</h2>
+                <TankTroublePage />
               </div>
             </div>
           </div>

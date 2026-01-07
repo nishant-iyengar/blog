@@ -14,7 +14,7 @@ const eslintConfig = defineConfig([
       ...reactHooks.configs.recommended.rules,
       // Enforce React Hooks rules strictly
       "react-hooks/rules-of-hooks": "error", // Prevents conditional hooks, hooks in loops, etc.
-      "react-hooks/exhaustive-deps": "warn", // Warns about missing dependencies in useEffect, useMemo, etc.
+      "react-hooks/exhaustive-deps": "error", // ERROR: Enforces exact dependencies - nothing more, nothing less
       
       // Next.js specific best practices
       "@next/next/no-html-link-for-pages": "error", // Use Next.js Link component instead of <a> tags

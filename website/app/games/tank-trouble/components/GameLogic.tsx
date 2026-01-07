@@ -4,30 +4,21 @@ import { TICK_INTERVAL, GAME_CONFIG } from '@/app/games/tank-trouble/config';
 import { updatePlayer1Tank, updatePlayer2Tank } from '@/app/games/tank-trouble/utils/tank';
 import { updateBullets } from '@/app/games/tank-trouble/utils/bullet';
 import { generateRandomSpawnPosition } from '@/app/games/tank-trouble/utils/spawn';
-import { updateAITank, type AIConfig } from '@/app/games/tank-trouble/ai-tank';
-import type { RLTrainingManager } from '@/app/games/tank-trouble/ai-tank/rl-training-manager';
-import { MAX_EPISODE_TIME_MS } from '@/app/games/tank-trouble/constants/game-constants';
 
 export interface GameInstance {
   id: number;
   tanks: Tank[];
   bullets: Bullet[];
   lastShotTimes: { blue: number; red: number };
-  gameMode: 'ai' | 'person-vs-ai';
-  gameId: string;
   isPaused: boolean;
   speedMultiplier: number;
-  episodeStartTime?: number;
   keysRef: React.MutableRefObject<Set<string>>;
 }
 
-interface MultiGameLogicProps {
+interface GameLogicProps {
   mapData: TankTroubleMapData;
   barriers: Barrier[];
   suns: Sun[];
-  aiConfig?: AIConfig;
-  trainingManager?: RLTrainingManager | null;
-  maxEpisodeTimeMs?: number;
   gameInstances: GameInstance[];
   onTanksUpdate: (gameId: number, tanks: Tank[]) => void;
   onBulletsUpdate: (gameId: number, bullets: Bullet[]) => void;
@@ -37,45 +28,32 @@ interface MultiGameLogicProps {
 
 interface GameTickOptions {
   skipIntervalCheck?: boolean;
-  gameId?: number; // Optional: tick specific game, otherwise tick all
+  gameId?: number;
 }
 
 /**
- * Multi-game logic hook - handles game ticks for multiple game instances
- * This replaces the previous pattern of calling useGameLogic multiple times (which violated Rules of Hooks)
+ * Simplified game logic hook - handles game ticks for 2-player games only
  */
-export function useMultiGameLogic({
+export function useGameLogic({
   mapData,
   barriers,
   suns,
-  aiConfig,
-  trainingManager,
-  maxEpisodeTimeMs = MAX_EPISODE_TIME_MS,
   gameInstances,
   onTanksUpdate,
   onBulletsUpdate,
   onLastShotTimesUpdate,
   onGameOver,
-}: MultiGameLogicProps) {
-  // Track game over states per game
+}: GameLogicProps) {
   const gameOverTriggeredRefs = useRef<Map<number, boolean>>(new Map());
-  
-  // Track last tick times per game
   const lastTickRefs = useRef<Map<number, number>>(new Map());
-  
-  // Track tank/bullet refs per game
   const tanksRefs = useRef<Map<number, Tank[]>>(new Map());
   const bulletsRefs = useRef<Map<number, Bullet[]>>(new Map());
   
-  // Store latest gameInstances in ref for access in callback (avoid stale closure)
   const gameInstancesRef = useRef(gameInstances);
-  
-  // Create a Map for O(1) lookup by gameId instead of O(n) filter
   const gameInstancesMapRef = useRef<Map<number, GameInstance>>(new Map());
   
   useEffect(() => {
     gameInstancesRef.current = gameInstances;
-    // Update Map for efficient lookups
     const map = new Map<number, GameInstance>();
     gameInstances.forEach(instance => {
       map.set(instance.id, instance);
@@ -83,7 +61,6 @@ export function useMultiGameLogic({
     gameInstancesMapRef.current = map;
   }, [gameInstances]);
   
-  // Initialize refs for all games
   useEffect(() => {
     gameInstances.forEach((instance) => {
       if (!tanksRefs.current.has(instance.id)) {
@@ -95,10 +72,8 @@ export function useMultiGameLogic({
     });
   }, [gameInstances]);
   
-  // Update refs when state changes
   useEffect(() => {
     gameInstances.forEach((instance) => {
-      const prevTanks = tanksRefs.current.get(instance.id);
       tanksRefs.current.set(instance.id, instance.tanks);
       bulletsRefs.current.set(instance.id, instance.bullets);
       
@@ -111,20 +86,16 @@ export function useMultiGameLogic({
     });
   }, [gameInstances]);
 
-  const gameTick = useCallback(async (options?: GameTickOptions) => {
-    // Use ref to get latest game instances (avoid stale closure)
+  const gameTick = useCallback((options?: GameTickOptions) => {
     const currentGameInstances = gameInstancesRef.current;
     const gamesToTick = options?.gameId !== undefined 
       ? (() => {
-          // Use Map for O(1) lookup instead of O(n) filter
           const instance = gameInstancesMapRef.current.get(options.gameId);
           return instance ? [instance] : [];
         })()
       : currentGameInstances;
 
-    // Use for...of instead of forEach to support async/await
     for (const instance of gamesToTick) {
-      // Skip if paused
       if (instance.isPaused) {
         continue;
       }
@@ -132,7 +103,6 @@ export function useMultiGameLogic({
       const now = Date.now();
       const lastTickTime = lastTickRefs.current.get(instance.id) || 0;
       
-      // Check interval (unless skipIntervalCheck is true)
       if (!options?.skipIntervalCheck) {
         const adjustedTickInterval = TICK_INTERVAL / instance.speedMultiplier;
         if (now - lastTickTime < adjustedTickInterval) {
@@ -148,63 +118,25 @@ export function useMultiGameLogic({
       let newLastShotTimes = { ...instance.lastShotTimes };
       const keys = instance.keysRef.current;
       
-      // Validate tanks exist
       if (!currentTanks || currentTanks.length < 2) {
         continue;
       }
 
       // Update Player 1 (Blue)
       if (currentTanks[0]?.lives > 0) {
-        let result;
-        
-        if (instance.gameMode === 'person-vs-ai') {
-          result = updatePlayer1Tank({
-            tank: currentTanks[0],
-            tankIndex: 0,
-            keys,
-            tickTime,
-            lastShotTime: instance.lastShotTimes.blue,
-            bullets: currentBullets,
-            mapWidth: mapData.width,
-            mapHeight: mapData.height,
-            barriers,
-            suns,
-            allTanks: currentTanks,
-          });
-        } else if (trainingManager && trainingManager.getIsTraining() && instance.gameMode === 'ai') {
-          result = await updateAITank(
-            {
-              tank: currentTanks[0],
-              tankIndex: 0,
-              keys,
-              tickTime,
-              lastShotTime: instance.lastShotTimes.blue,
-              bullets: currentBullets,
-              mapWidth: mapData.width,
-              mapHeight: mapData.height,
-              barriers,
-              suns,
-              allTanks: currentTanks,
-            },
-            aiConfig,
-            trainingManager,
-            `${instance.gameId}-blue`
-          );
-        } else {
-          result = updatePlayer1Tank({
-            tank: currentTanks[0],
-            tankIndex: 0,
-            keys,
-            tickTime,
-            lastShotTime: instance.lastShotTimes.blue,
-            bullets: currentBullets,
-            mapWidth: mapData.width,
-            mapHeight: mapData.height,
-            barriers,
-            suns,
-            allTanks: currentTanks,
-          });
-        }
+        const result = updatePlayer1Tank({
+          tank: currentTanks[0],
+          tankIndex: 0,
+          keys,
+          tickTime,
+          lastShotTime: instance.lastShotTimes.blue,
+          bullets: currentBullets,
+          mapWidth: mapData.width,
+          mapHeight: mapData.height,
+          barriers,
+          suns,
+          allTanks: currentTanks,
+        });
         
         currentTanks[0] = result.updatedTank;
         currentBullets.push(...result.newBullets);
@@ -213,25 +145,19 @@ export function useMultiGameLogic({
 
       // Update Player 2 (Red)
       if (currentTanks[1]?.lives > 0) {
-        // Always use AI for red tank (simplified logic - removed duplicate branch)
-        const result = await updateAITank(
-          {
-            tank: currentTanks[1],
-            tankIndex: 1,
-            keys,
-            tickTime,
-            lastShotTime: instance.lastShotTimes.red,
-            bullets: currentBullets,
-            mapWidth: mapData.width,
-            mapHeight: mapData.height,
-            barriers,
-            suns,
-            allTanks: currentTanks,
-          },
-          aiConfig,
-          trainingManager,
-          instance.gameId
-        );
+        const result = updatePlayer2Tank({
+          tank: currentTanks[1],
+          tankIndex: 1,
+          keys,
+          tickTime,
+          lastShotTime: instance.lastShotTimes.red,
+          bullets: currentBullets,
+          mapWidth: mapData.width,
+          mapHeight: mapData.height,
+          barriers,
+          suns,
+          allTanks: currentTanks,
+        });
         
         currentTanks[1] = result.updatedTank;
         currentBullets.push(...result.newBullets);
@@ -250,54 +176,6 @@ export function useMultiGameLogic({
       });
 
       const gameOverTriggered = gameOverTriggeredRefs.current.get(instance.id) || false;
-
-      // Check for timeout
-      if (!gameOverTriggered && instance.episodeStartTime) {
-        const episodeElapsed = tickTime - instance.episodeStartTime;
-        if (episodeElapsed >= maxEpisodeTimeMs) {
-          gameOverTriggeredRefs.current.set(instance.id, true);
-          const blueTank = bulletResult.updatedTanks[0];
-          const redTank = bulletResult.updatedTanks[1];
-          
-          let winner: 'blue' | 'red' | null = null;
-          if (blueTank && redTank) {
-            if (blueTank.lives > redTank.lives) {
-              winner = 'blue';
-            } else if (redTank.lives > blueTank.lives) {
-              winner = 'red';
-            }
-          }
-          
-          bulletResult.updatedBullets = [];
-          bulletResult.updatedTanks[0] = {
-            ...blueTank,
-            exploding: false,
-            explosionStartTime: undefined,
-            respawning: false,
-            respawnStartTime: undefined,
-            respawnTargetX: undefined,
-            respawnTargetY: undefined,
-            respawnTargetAngle: undefined,
-            invincibleUntil: undefined,
-          };
-          bulletResult.updatedTanks[1] = {
-            ...redTank,
-            exploding: false,
-            explosionStartTime: undefined,
-            respawning: false,
-            respawnStartTime: undefined,
-            respawnTargetX: undefined,
-            respawnTargetY: undefined,
-            respawnTargetAngle: undefined,
-            invincibleUntil: undefined,
-          };
-          
-          onTanksUpdate(instance.id, bulletResult.updatedTanks);
-          onBulletsUpdate(instance.id, bulletResult.updatedBullets);
-          onGameOver(instance.id, winner);
-          return;
-        }
-      }
 
       // Check for game over (tank reached 0 lives)
       const blueTankAfterBullets = bulletResult.updatedTanks[0];
@@ -346,7 +224,6 @@ export function useMultiGameLogic({
         
         if (tank.lives < originalTank.lives && tank.lives > 0) {
           const tankColor = tank.color;
-          // Optimized: build new array instead of filter (more explicit, same complexity but clearer intent)
           const filteredBullets: typeof bulletResult.updatedBullets = [];
           for (const bullet of bulletResult.updatedBullets) {
             if (bullet.owner !== tankColor) {
@@ -365,8 +242,7 @@ export function useMultiGameLogic({
               : undefined
           );
           
-          // Set invincibility for 2 seconds after respawn
-          const INVINCIBILITY_DURATION_MS = 2000; // 2 seconds
+          const INVINCIBILITY_DURATION_MS = 2000;
           bulletResult.updatedTanks[i] = {
             ...tank,
             x: spawn.x,
@@ -393,11 +269,9 @@ export function useMultiGameLogic({
             respawnTargetX: undefined,
             respawnTargetY: undefined,
             respawnTargetAngle: undefined,
-            // Don't clear invincibleUntil here - it may still be active
           };
         }
         
-        // Clear invincibility if it has expired
         if (tank.invincibleUntil !== undefined && tickTime >= tank.invincibleUntil) {
           bulletResult.updatedTanks[i] = {
             ...tank,
@@ -416,9 +290,6 @@ export function useMultiGameLogic({
     mapData,
     barriers,
     suns,
-    aiConfig,
-    trainingManager,
-    maxEpisodeTimeMs,
     onTanksUpdate,
     onBulletsUpdate,
     onLastShotTimesUpdate,

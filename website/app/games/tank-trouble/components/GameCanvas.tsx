@@ -294,7 +294,7 @@ export function GameCanvas({
       const winnerText = gameOverWinner === 'blue' ? 'BLUE WINS!' : 'RED WINS!';
       ctx.fillText(winnerText, width / 2, height / 2 - 20);
       ctx.font = '20px Inter';
-      ctx.fillText('Press any key to play again', width / 2, height / 2 + 20);
+      ctx.fillText('Game Over', width / 2, height / 2 + 20);
       ctx.textAlign = 'left'; // Reset alignment
     }
     

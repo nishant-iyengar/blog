@@ -6,7 +6,7 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { resolve } from 'path';
 
 let rootEnvLoaded = false;
 
@@ -19,11 +19,24 @@ function loadRootEnv(): void {
     return; // Only load once
   }
 
-  // Path to root .env (two levels up from website/lib/)
-  const rootEnvPath = resolve(__dirname, '../../.env');
+  // Try multiple paths to find the root .env file
+  // process.cwd() might point to website/ or root depending on how Next.js is run
+  const possiblePaths = [
+    resolve(process.cwd(), '.env'),           // If running from root
+    resolve(process.cwd(), '..', '.env'),     // If running from website/
+    resolve(process.cwd(), '../.env'),        // Alternative format
+  ];
   
-  if (!existsSync(rootEnvPath)) {
-    console.warn(`Root .env file not found at ${rootEnvPath}`);
+  let rootEnvPath: string | null = null;
+  for (const path of possiblePaths) {
+    if (existsSync(path)) {
+      rootEnvPath = path;
+      break;
+    }
+  }
+  
+  if (!rootEnvPath) {
+    console.warn(`Root .env file not found. Tried: ${possiblePaths.join(', ')}`);
     rootEnvLoaded = true;
     return;
   }
@@ -54,12 +67,22 @@ function loadRootEnv(): void {
       if (key === 'BLOB_READ_WRITE_TOKEN' || key === 'VERCEL_OIDC_TOKEN') {
         // Force override from root .env (root .env always wins for these tokens)
         process.env[key] = value;
+        console.log(`Loaded ${key} from root .env at ${rootEnvPath}`);
       }
     }
 
+    const loadedTokens = [];
+    if (process.env.BLOB_READ_WRITE_TOKEN) loadedTokens.push('BLOB_READ_WRITE_TOKEN');
+    if (process.env.VERCEL_OIDC_TOKEN) loadedTokens.push('VERCEL_OIDC_TOKEN');
+    
     rootEnvLoaded = true;
+    if (loadedTokens.length > 0) {
+      console.log(`Root .env loaded successfully from ${rootEnvPath}. Tokens loaded: ${loadedTokens.join(', ')}`);
+    } else {
+      console.warn(`Root .env loaded from ${rootEnvPath}, but no expected tokens found.`);
+    }
   } catch (error) {
-    console.error(`Failed to load root .env file: ${error}`);
+    console.error(`Failed to load root .env file from ${rootEnvPath}:`, error);
     rootEnvLoaded = true; // Mark as loaded to prevent retry loops
   }
 }

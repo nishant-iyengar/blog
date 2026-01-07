@@ -1,9 +1,10 @@
+// Load environment variables from root .env (not .env.local) FIRST
+// This must run before @vercel/blob is imported
+import './env-loader';
 import fs from 'fs';
 import path from 'path';
 import { list } from '@vercel/blob';
 import { isValidFileType, FileType } from './utils';
-// Load environment variables from root .env (not .env.local)
-import './env-loader';
 
 const animalsMetadataDirectory = path.join(process.cwd(), 'content/animals');
 
