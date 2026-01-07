@@ -1,4 +1,8 @@
 {
-  "rootDirectory": "website"
+  "buildCommand": "cd website && pnpm build",
+  "devCommand": "cd website && pnpm dev",
+  "installCommand": "cd website && pnpm install",
+  "framework": "nextjs",
+  "regions": ["iad1"]
 }
 
