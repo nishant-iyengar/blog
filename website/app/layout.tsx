@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import ConditionalBouncingBall from "@/components/ConditionalBouncingBall";
+import Nav from "@/components/Nav";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "nishant",
-  description: "Welcome to my blog",
+  title: "Nishant Iyengar",
+  description: "Personal website of Nishant Iyengar",
 };
 
 export default function RootLayout({
@@ -22,8 +22,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} font-sans antialiased`}>
-        <ConditionalBouncingBall />
-        {children}
+        <div className="max-w-2xl mx-auto px-6 py-12 md:py-20">
+          <Nav />
+          <main>{children}</main>
+        </div>
       </body>
     </html>
   );
