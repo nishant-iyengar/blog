@@ -19,32 +19,31 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-export default function RotatingWords({ 
-  words, 
+export default function RotatingWords({
+  words,
   interval = 3000,
-  className = '' 
+  className = ''
 }: RotatingWordsProps) {
-  const [orderedWords, setOrderedWords] = useState<string[]>(words);
+  const safeWords = Array.isArray(words) ? words : [];
+  const [orderedWords, setOrderedWords] = useState<string[]>(safeWords);
 
   useEffect(() => {
-    if (words.length <= 1) {
-      setOrderedWords(words);
+    if (safeWords.length <= 1) {
+      setOrderedWords(safeWords);
       return;
     }
 
-    // Initialize with shuffled order
-    setOrderedWords(shuffleArray(words));
+    setOrderedWords(shuffleArray(safeWords));
 
     const timer = setInterval(() => {
-      // Shuffle the words array to get a new random ordering
-      setOrderedWords(shuffleArray(words));
+      setOrderedWords(shuffleArray(safeWords));
     }, interval);
 
     return () => clearInterval(timer);
-  }, [words, interval]);
+  }, [safeWords, interval]);
 
-  if (words.length === 0) return null;
-  if (words.length === 1) return <span className={className}>{words[0]}</span>;
+  if (safeWords.length === 0) return null;
+  if (safeWords.length === 1) return <span className={className}>{safeWords[0]}</span>;
 
   return (
     <div className={`flex flex-wrap gap-1 ${className}`}>
