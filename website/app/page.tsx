@@ -61,7 +61,7 @@ export default function Home() {
         <ul className="space-y-2 text-[#555]">
           <li>Went to Duke and majored in Computer Science and Electrical Engineering.</li>
           <li>Joined <a href="https://www.miter.com" target="_blank" rel="noopener noreferrer" className="text-[#555] underline decoration-[#ccc] hover:decoration-[#555] transition-colors">Miter</a> as the third engineer, and took multiple product-pillars 0 → 1.</li>
-          <li>Currently exploring reinforcement learning, agentic payments, and anything else.</li>
+          <li>Currently exploring various technologies and spaces like RL and agentic workflows.</li>
         </ul>
       </Section>
 
@@ -70,7 +70,7 @@ export default function Home() {
         <div className="divide-y divide-[#eee]">
           <ProjectRow
             name="TankBet"
-            description="Extending my childhood favorite game to remote play"
+            description="Extending my childhood favorite game to remote play and AI"
             href="https://tankbet.dev"
           />
         </div>

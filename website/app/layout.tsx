@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Nishant Iyengar",
+  title: "hello world",
   description: "Personal website of Nishant Iyengar",
 };
 
